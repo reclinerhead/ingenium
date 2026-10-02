@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Dependency build scripts stay off unless something needs one (the defaults
+# create-next-app chose for the web app; sharp is optional for next/image).
+allowBuilds:
+  sharp: false
+  unrs-resolver: false

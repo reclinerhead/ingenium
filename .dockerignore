@@ -1,0 +1,15 @@
+# The image is built from the repo root (apps/web/Dockerfile); keep the
+# context to what the build stage copies.
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/next-env.d.ts
+**/.env
+**/.env*.local
+.git
+.github
+.claude
+docs
+compose.yaml

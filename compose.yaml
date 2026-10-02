@@ -1,0 +1,46 @@
+# The Ingenia web shell as it runs on orchid. Technical Guide § Deployment.
+#
+#   docker compose -f ~/ingenium/compose.yaml pull
+#   docker compose -f ~/ingenium/compose.yaml up -d
+#
+# Published on loopback only; orchid's Caddy is the front door
+# (https://ingenia.lan). No volume yet: Phase 0 keeps no state.
+
+name: ingenium
+
+services:
+  web:
+    image: ghcr.io/reclinerhead/ingenium-web:latest
+    container_name: ingenium-web
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    ports:
+      - "127.0.0.1:3100:3000"
+    networks:
+      - ingenium
+    # The rootfs is read-only. Next writes only its cache (ISR, fetch,
+    # optimized images); it gets a tmpfs owned by the image's node user
+    # (uid 1000), so it starts empty on every restart.
+    tmpfs:
+      - /tmp
+      - /app/apps/web/.next/cache:uid=1000,gid=1000
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  ingenium:
+    driver: bridge
