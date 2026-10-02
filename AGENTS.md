@@ -21,7 +21,9 @@ The web shell runs on **orchid**. Everything about orchid as a machine lives in 
 
 Never copy content from that repo into this one. This repository is public; that one is private for a reason.
 
-**This repo** owns everything Ingenia puts on the box: the image, `compose.yaml`, the deploy steps, and the names (never the values) of any environment variables. **The runbook** owns orchid's facts: the tenant row, the port in its listener list, the Caddy site block, and the DNS records. A PR here that changes how Ingenia is deployed (port, network mode, volumes, the front door) needs a matching PR in the infrastructure repo. Link the two.
+**This repo** owns everything Ingenia puts on the box: the image, `compose.yaml`, the deploy watcher and its unit (`deploy/`), and the names (never the values) of any environment variables. **The runbook** owns orchid's facts: the tenant and watcher rows, the port in its listener list, the Caddy site block, and the DNS records. A PR here that changes how Ingenia is deployed (port, network mode, volumes, the front door, the watcher's unit) needs a matching PR in the infrastructure repo. Link the two.
+
+**Main is live.** Since ADR-0002, merging to main deploys to orchid within minutes, and a container that fails its health check is rolled back automatically. Keep main deployable, and never break `/api/health`'s contract (`{ ok, version }`, with `version` the full commit SHA): the watcher's rollback depends on it.
 
 ## Public repository rules
 

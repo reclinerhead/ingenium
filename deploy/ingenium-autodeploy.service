@@ -1,0 +1,27 @@
+# Ingenia's deploy watcher on orchid (issue #4): merging to main is the deploy.
+# The script is deploy/autodeploy.sh; the Technical Guide § 6 has the rest.
+#
+# Install, or reinstall after this file changes (the watcher updates the
+# script, never this unit):
+#   sudo cp ~/ingenium/deploy/ingenium-autodeploy.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ingenium-autodeploy
+#
+# Runs as the checkout owner, not root: docker group membership is all it
+# needs (systemd initializes the user's supplementary groups). A loop
+# service, not a timer, so the journal reads as a deploy history.
+
+[Unit]
+Description=Ingenia deploy watcher -- merges to main deploy themselves
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+User=todd
+WorkingDirectory=/home/todd/ingenium
+ExecStart=/usr/bin/bash /home/todd/ingenium/deploy/autodeploy.sh
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

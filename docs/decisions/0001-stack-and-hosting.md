@@ -1,6 +1,6 @@
 # 0001. Stack and hosting
 
-- Status: Accepted
+- Status: Accepted; decision 4 (manual deploys) superseded by [0002](0002-autodeploy-on-orchid.md)
 - Date: 2026-10-02
 
 ## Context

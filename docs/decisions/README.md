@@ -35,4 +35,5 @@ Each option, and why it lost.
 
 | ADR | Title | Status |
 |---|---|---|
-| [0001](0001-stack-and-hosting.md) | Stack and hosting | Accepted |
+| [0001](0001-stack-and-hosting.md) | Stack and hosting | Accepted; decision 4 superseded by 0002 |
+| [0002](0002-autodeploy-on-orchid.md) | Autodeploy on orchid | Accepted |
