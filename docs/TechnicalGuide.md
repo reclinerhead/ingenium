@@ -1,0 +1,167 @@
+# Ingenium: Technical Guide
+
+How this repository is built and why. Read it with [AGENTS.md](../AGENTS.md), which covers how to work here. The roadmap (milestones, open design questions) lives in [epic #1](https://github.com/reclinerhead/ingenium/issues/1), not here. This guide describes what exists now.
+
+## 1. Names
+
+- **Ingenia** is the game: the title, the web shell, and the `ingenia.lan` front door.
+- **Ingenium** is the engine: `packages/ingenium`, credited as "Powered by the Ingenium Engine". The repository is named for the engine.
+
+## 2. Repository layout
+
+```
+apps/web/              Next.js shell: the title card and /api/health. Dockerfile for orchid.
+packages/ingenium/     The engine. Pure TypeScript, zero runtime dependencies, fenced by lint.
+docs/TechnicalGuide.md This file.
+docs/decisions/        Architecture decision records (ADRs).
+compose.yaml           The container as it runs on orchid.
+.github/               CI (ci.yml) and issue templates.
+```
+
+Every workspace package lives under `apps/*` or `packages/*` (`pnpm-workspace.yaml`). The engine packages the epic plans for later (`mind-llm`, `db`) don't exist yet. Each one arrives with the milestone that needs it.
+
+## 3. The engine and its fence
+
+`packages/ingenium` is a **source-only** package. Its `exports` points at `src/index.ts`, and it has no build step. Each consumer compiles it: Turbopack transpiles workspace packages automatically, and Vitest and Node's type stripping run the source directly. For that reason the engine uses only erasable TypeScript syntax (`erasableSyntaxOnly`) and writes relative imports with their `.ts` extension (`allowImportingTsExtensions`).
+
+The package has **no `dependencies` field**. Today it exports identity only, `ENGINE_NAME` and `ENGINE_VERSION`. A sibling test keeps `ENGINE_VERSION` equal to `package.json`'s `version`.
+
+`packages/ingenium/eslint.config.js` enforces the epic's principles mechanically. Its rules cover non-test source under `src/`:
+
+| Rule | Forbids | Principle |
+|---|---|---|
+| `no-restricted-properties` | `Math.random`, `Date.now` | Deterministic core: a seed produces an identical event log. Randomness comes from the seeded PRNG and time from the sim clock, both supplied by the caller. |
+| `no-restricted-syntax` | argument-less `new Date()` | Same: it reads the wall clock. `new Date(epochMs)` is allowed. |
+| `no-restricted-globals` | `performance`, `crypto`, `process` | Same, plus headless purity: inputs arrive as arguments, never from the host environment. |
+| `no-restricted-imports` | any non-relative specifier | Zero runtime dependencies and one-way layering: no `node:*` builtins, no `apps/*`, no third-party packages. |
+
+Loosening any of these is an architectural decision, so write an ADR first.
+
+## 4. The web shell (`apps/web`)
+
+- **Stack:** Next.js 16.3 (App Router, Turbopack, React Compiler on), Tailwind CSS v4, and shadcn (`radix-nova` style, `components.json`). No shadcn components are installed yet; add them with `pnpm dlx shadcn@latest add <name>` when a page needs one. `@/lib/utils` re-exports `cn` from the `cn` package, shadcn's replacement for `clsx` + `tailwind-merge`.
+- **Build:** `output: "standalone"`, with `outputFileTracingRoot` set to the workspace root. pnpm keeps dependencies in the root `node_modules/.pnpm`, so tracing from `apps/web` alone would ship a server with no dependencies. The standalone tree mirrors the workspace, which puts the server at `apps/web/server.js`.
+- **Routes:**
+  - `/`: the title card, prerendered static.
+  - `/api/health`: dynamic (route handlers aren't cached by default). Returns `{ "ok": true, "version": "<sha>" }`, where `version` is `INGENIUM_BUILD_SHA`, baked into the image from the `BUILD_SHA` build arg, or `"dev"` when the variable is unset. It backs the container healthcheck and tells you which build is serving.
+- **Design:** the title card is the front page of the street's own 1980s tabloid. Its stories are in-world flavor and deliberately unreliable; none of it is game state.
+  - **Tokens:** shadcn's set in `src/app/globals.css`, recoloured: yellowed newsprint (`card`) on a kraft desk (`background`), black ink, spot red (`primary`), radius 0. Two custom tokens: `headline` (red for text, lighter in dark mode for contrast) and `lamp` (lit windows).
+  - **Dark mode** follows the system. `@custom-variant dark` is a `prefers-color-scheme` media query, not a class, and the dark tokens make up the "night edition".
+  - **Fonts** (next/font, self-hosted at build):
+    - Big Shoulders: display and headings. next/font has no metrics for it, so `adjustFontFallback` is off and the fallback is a named condensed stack.
+    - Bodoni Moda italic: kickers.
+    - Courier Prime: body. It is mapped to `font-sans` and `font-mono`.
+  - **Texture and motion:** `@utility grain` (SVG noise) and `@utility halftone` provide the paper texture. The `rise` and `wipe` animations stagger the load, all with `motion-reduce:animate-none`.
+  - **Styling:** Tailwind utilities only, no inline styles. The per-house animation delays are written out as literal classes so Tailwind can see them.
+- **Next's agent files:** `apps/web/AGENTS.md` and `CLAUDE.md` are written by `create-next-app` and re-added by `next dev`. Keep them committed.
+
+## 5. Tooling, tests, and CI
+
+| Command (repo root) | Does |
+|---|---|
+| `pnpm dev` | `next dev` for the web shell on :3000 |
+| `pnpm build` | every package's `build` (today, the web shell) |
+| `pnpm typecheck` | `tsc --noEmit` per package (web runs `next typegen` first, which generates the `LayoutProps`/`PageProps` route types) |
+| `pnpm lint` | ESLint per package, with each package's own flat config |
+| `pnpm test` / `pnpm test:watch` | Vitest over every project in the root `vitest.config.ts` |
+
+- **pnpm 11 and Node 24 LTS.** Versions are pinned by `packageManager`, `engines`, and `.nvmrc`. Dependency build scripts stay off (`allowBuilds` in `pnpm-workspace.yaml`).
+- **TypeScript 5.9** comes from `tsconfig.base.json`: strict, plus `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `erasableSyntaxOnly`, and `allowImportingTsExtensions`. The web config overrides `module`/`moduleResolution`/`jsx` for the bundler. It stays on 5.9 because typescript-eslint supports TypeScript below 6.1 only, and Next's template pins 5.
+- **ESLint 9**, even though 9 is end-of-life. eslint-config-next 16.3 pulls in `eslint-plugin-import`, `eslint-plugin-jsx-a11y`, and `eslint-plugin-react`, and all three cap their peer dependency at ESLint 9. Move both packages to ESLint 10 together once Next's config supports it.
+- **Tests** are Vitest 5, sitting beside the source as `*.test.ts`. The root config's `projects` is `packages/*`; add `apps/*` when the web shell gets its first test. What gets tested follows AGENTS.md § Tests.
+- **CI** (`.github/workflows/ci.yml`):
+  - The **Tests** job runs `install --frozen-lockfile`, `typecheck`, `lint`, and `test` on every PR and every push to main.
+  - On main only, once Tests passes, **Build and push image** builds `apps/web/Dockerfile` from the repo root. It pushes to `ghcr.io/reclinerhead/ingenium-web`, tagged with the short SHA and `latest`, with `BUILD_SHA` set to the full commit SHA.
+  - Pull requests never push images.
+
+## 6. Deployment on orchid
+
+Everything about orchid as a machine lives in the private `toddtech-infrastructure` repo, in `servers/Orchid.md`. That covers addresses, hardware, the other tenants and their ports, Caddy, Pi-hole, Tailscale, and backups. The runbook carries Ingenia's row in its "What runs here" table plus a short section of orchid-side facts. Read it before touching ports, networking, or the front door.
+
+From orchid, this repo relies on:
+
+- Docker with compose
+- Caddy terminating TLS from the house root CA
+- Pi-hole serving the `.lan` names
+- the convention that tenants publish on loopback and Caddy fronts them
+
+The shape copies `toddtech-web-relay`, orchid's other bridge-network tenant: a versioned `compose.yaml`, a public GHCR image, manual deploys, and its own checkout.
+
+### Layout on orchid
+
+```
+~/ingenium/        git checkout over HTTPS (public repo, so no deploy key); compose.yaml lives here
+```
+
+There is no state and no `/srv/ingenium` yet. Persistence (SQLite on a volume) adds both, along with a backup entry in the runbook.
+
+### The container
+
+| Setting | Value | Why |
+|---|---|---|
+| Network | bridge, published `127.0.0.1:3100 → 3000` | Only orchid's Caddy can reach it. Port 3000 on the host belongs to another tenant. |
+| Root filesystem | `read_only: true` | Next writes nothing but its cache. |
+| tmpfs | `/tmp`, `/app/apps/web/.next/cache` (uid 1000) | The cache is disposable and starts empty on every restart. |
+| Privileges | runs as `node` (uid 1000), `cap_drop: ALL`, `no-new-privileges` | |
+| Memory | `mem_limit: 512m` | |
+| Health | `wget` against `/api/health` every 30 s | Alpine base, so `wget` is present. |
+| Logs | json-file, 10 MB × 3 | |
+
+The container makes no outbound calls. Docker's embedded DNS can't reach orchid's loopback resolver, so `.lan` names do not resolve inside the container. The first feature that needs a LAN service must handle that explicitly.
+
+### Front door
+
+The `ingenia, ingenia.lan` site block in orchid's Caddyfile reverse-proxies to `127.0.0.1:3100` with the house `lan_tls` snippet. That Caddyfile is versioned with the rest of orchid's config, outside this repo, and applied by hand. The two Pi-hole Local DNS records point `ingenia.lan` at orchid. Access is LAN and tailnet only: no Funnel, no public exposure.
+
+### Bring-up
+
+```bash
+# orchid
+git clone https://github.com/reclinerhead/ingenium.git ~/ingenium
+sudo ss -tlnp | grep 3100                                  # must be empty
+docker compose -f ~/ingenium/compose.yaml up -d
+curl -s http://127.0.0.1:3100/api/health                   # {"ok":true,"version":"<sha of main>"}
+docker inspect --format '{{.State.Health.Status}}' ingenium-web   # healthy
+
+# once Caddy and Pi-hole carry the name, from any LAN machine:
+curl -skI https://ingenia.lan/ | head -1                   # HTTP/2 200
+```
+
+The GHCR package must be **public**: the repo is public, the image holds nothing secret, and orchid pulls with no registry login. A first push can land as private. If `docker compose pull` on orchid answers `denied`, switch the package to public in its GitHub package settings.
+
+### Day-to-day
+
+```bash
+docker compose -f ~/ingenium/compose.yaml pull && docker compose -f ~/ingenium/compose.yaml up -d   # deploy latest main
+curl -s http://127.0.0.1:3100/api/health    # confirm the SHA
+docker logs ingenium-web --tail 50
+```
+
+**Merging to main publishes an image but doesn't deploy it.** A deploy is the pull + `up -d` above, run by hand. Pull `git` in `~/ingenium` too when `compose.yaml` itself has changed.
+
+### Testing the image on a desk machine
+
+```bash
+docker build -f apps/web/Dockerfile --build-arg BUILD_SHA=$(git rev-parse HEAD) -t ingenium-web:local .
+```
+
+Then run it under the real `compose.yaml` with a one-line override file that sets `services.web.image: ingenium-web:local`, so the read-only root filesystem and tmpfs layout get exercised too.
+
+## 7. Public repository rules
+
+The repo and its image are public. Never commit addresses (LAN or tailnet), tailnet names, MAC addresses, keys or tokens, or anything that identifies a physical location. Machine hostnames such as `orchid` are fine. Facts about the house network belong in the private infrastructure repo, and this guide points there instead of copying them.
+
+## 8. Decisions and rejected alternatives
+
+ADRs in [`docs/decisions/`](decisions/) record the larger decisions. This table is the quick reference.
+
+| Decision | Alternative rejected | Why |
+|---|---|---|
+| pnpm monorepo, engine as its own package | single Next app with an `engine/` folder | The engine must stay headless and testable on its own; a package boundary plus the lint fence makes that mechanical (ADR-0001) |
+| Engine is source-only, no build step | compile to `dist/` | Every consumer (Turbopack, Vitest, Node type stripping) already compiles TS; a build step adds a watch process and stale-output bugs for nothing |
+| Docker on orchid behind Caddy | Vercel | The epic's later milestones need a LAN Ollama and SQLite on a volume; the house box has both and already runs the front door (ADR-0001) |
+| Public GHCR image | private package plus a registry token on orchid | The source is public and the image holds nothing secret |
+| Manual deploys | autodeploy on merge | Not until there is something worth deploying automatically; the web relay's manual rhythm has worked |
+| Bridge network, loopback publish | host networking | The shell needs none of host networking's benefits (mDNS, DHCP) |
+| Dark mode from the system preference | a class toggle | No toggle exists to drive it; the night edition just follows the reader's OS |
+| ESLint 9, TypeScript 5.9 | ESLint 10, TypeScript 7 | Next 16.3's lint plugins cap at ESLint 9; typescript-eslint caps below TypeScript 6.1 |
