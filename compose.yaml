@@ -1,6 +1,10 @@
 # The Ingenia web shell as it runs on orchid. Technical Guide § Deployment.
 #
-#   docker compose -f ~/ingenium/compose.yaml pull
+# Deployed by deploy/autodeploy.sh (the ingenium-autodeploy unit), which pins
+# the image to a commit's short SHA in .env beside this file (gitignored).
+# With the watcher stopped, a hand deploy runs whatever .env pins (:latest if
+# nothing):
+#
 #   docker compose -f ~/ingenium/compose.yaml up -d
 #
 # Published on loopback only; orchid's Caddy is the front door
@@ -10,7 +14,7 @@ name: ingenium
 
 services:
   web:
-    image: ghcr.io/reclinerhead/ingenium-web:latest
+    image: ghcr.io/reclinerhead/ingenium-web:${INGENIUM_TAG:-latest}
     container_name: ingenium-web
     restart: unless-stopped
     read_only: true

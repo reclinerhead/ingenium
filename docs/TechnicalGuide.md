@@ -15,6 +15,7 @@ packages/ingenium/     The engine. Pure TypeScript, zero runtime dependencies, f
 docs/TechnicalGuide.md This file.
 docs/decisions/        Architecture decision records (ADRs).
 compose.yaml           The container as it runs on orchid.
+deploy/                The deploy watcher for orchid: autodeploy.sh and its systemd unit.
 .github/               CI (ci.yml) and issue templates.
 ```
 
@@ -70,7 +71,8 @@ Loosening any of these is an architectural decision, so write an ADR first.
 - **ESLint 9**, even though 9 is end-of-life. eslint-config-next 16.3 pulls in `eslint-plugin-import`, `eslint-plugin-jsx-a11y`, and `eslint-plugin-react`, and all three cap their peer dependency at ESLint 9. Move both packages to ESLint 10 together once Next's config supports it.
 - **Tests** are Vitest 5, sitting beside the source as `*.test.ts`. The root config's `projects` is `packages/*`; add `apps/*` when the web shell gets its first test. What gets tested follows AGENTS.md § Tests.
 - **CI** (`.github/workflows/ci.yml`):
-  - The **Tests** job runs `install --frozen-lockfile`, `typecheck`, `lint`, and `test` on every PR and every push to main.
+  - The **Tests** job runs `install --frozen-lockfile`, `typecheck`, `lint`, `test`, and `shellcheck deploy/*.sh` on every PR and every push to main.
+  - `.gitattributes` keeps `*.sh` and `*.service` files LF-terminated, even in a Windows checkout.
   - On main only, once Tests passes, **Build and push image** builds `apps/web/Dockerfile` from the repo root. It pushes to `ghcr.io/reclinerhead/ingenium-web`, tagged with the short SHA and `latest`, with `BUILD_SHA` set to the full commit SHA.
   - Pull requests never push images.
 
@@ -85,12 +87,14 @@ From orchid, this repo relies on:
 - Pi-hole serving the `.lan` names
 - the convention that tenants publish on loopback and Caddy fronts them
 
-The shape copies `toddtech-web-relay`, orchid's other bridge-network tenant: a versioned `compose.yaml`, a public GHCR image, manual deploys, and its own checkout.
+The shape copies `toddtech-web-relay`, orchid's other bridge-network tenant: a versioned `compose.yaml`, a public GHCR image, and its own checkout. Unlike the relay, merging is the deploy (§ Deploys).
 
 ### Layout on orchid
 
 ```
-~/ingenium/        git checkout over HTTPS (public repo, so no deploy key); compose.yaml lives here
+~/ingenium/                                      git checkout over HTTPS (public repo, so no deploy key)
+~/ingenium/.env                                  the pinned image (INGENIUM_TAG, INGENIUM_SHA): written by the watcher, gitignored
+/etc/systemd/system/ingenium-autodeploy.service  installed copy of deploy/ingenium-autodeploy.service
 ```
 
 There is no state and no `/srv/ingenium` yet. Persistence (SQLite on a volume) adds both, along with a backup entry in the runbook.
@@ -113,39 +117,96 @@ The container makes no outbound calls. Docker's embedded DNS can't reach orchid'
 
 The `ingenia, ingenia.lan` site block in orchid's Caddyfile reverse-proxies to `127.0.0.1:3100` with the house `lan_tls` snippet. That Caddyfile is versioned with the rest of orchid's config, outside this repo, and applied by hand. The two Pi-hole Local DNS records point `ingenia.lan` at orchid. Access is LAN and tailnet only: no Funnel, no public exposure.
 
+### Deploys: the watcher
+
+`ingenium-autodeploy` makes **merging to main the deploy**, usually within a few minutes of CI finishing. The script is `deploy/autodeploy.sh` and the unit is `deploy/ingenium-autodeploy.service`. It is a loop service that runs as `todd` (Docker group membership, no root). Every 60 s it fetches `origin/main`, and when main has moved past the running commit it:
+
+1. pulls the checkout (`--ff-only`), so `compose.yaml` changes arrive with the code;
+2. waits up to 15 minutes for CI to publish `ingenium-web:<first 7 characters of the SHA>`, checking with an anonymous `docker manifest inspect` every 15 s;
+3. writes `INGENIUM_TAG` and `INGENIUM_SHA` to `~/ingenium/.env` and runs `docker compose up -d`. `compose.yaml`'s image line is `ingenium-web:${INGENIUM_TAG:-latest}`, so changing the pin is the deploy;
+4. waits up to 90 s for `/api/health` to report the full SHA and for Docker's healthcheck to say `healthy`. If either never happens, it restores the previous pin and brings the old image back. With no previous pin, the fallback is `:latest`.
+
+Orchid never builds. A commit whose Tests check failed has no image, so it is never deployed. Every merge to main does get an image, so every merge restarts the container for a few seconds, docs-only merges included.
+
+The journal is the deploy history, and it stays quiet when nothing happens. Each refusal logs once when it starts and once when it clears:
+
+| Log line | Means |
+|---|---|
+| `watching origin/main every 60s -- running <tag>, …` | The watcher started, restarted, or handed over to a new copy of itself |
+| `deploying <new> (was <old>)`, then `deployed <new> (healthy)` | A merge went live |
+| `no image for <short> after 15m; staying on <tag>` | CI never published that commit (Tests failed, or CI is down). Not retried until main moves; fix forward |
+| `superseded: origin/main moved past <short> before its image appeared` | A newer merge landed during the wait, usually the fix for a failed one. The next tick deploys it |
+| `rollback: <short> unhealthy; back on <tag>` | The new container never proved itself, and the previous image is serving again. Not retried until main moves |
+| `rollback: … FAILED -- needs a human` | Neither image came up. Check `docker compose -f ~/ingenium/compose.yaml ps` and `docker logs ingenium-web` |
+| `checkout is dirty -- …` / `checkout is clean again` | `~/ingenium` has tracked changes, so nothing deploys until they're gone. Untracked and ignored files, `.env` included, never count |
+| `checkout is on '<branch>', not main -- deploys paused …` / `back on main` | Someone checked out a branch, which is the sanctioned way to pin the box |
+| `pull --ff-only refused at <short> … -- needs a human` | `~/ingenium` has local commits or diverged history |
+| `can't fetch origin …` / `fetch recovered` | Network or GitHub trouble; retried quietly |
+| `autodeploy.sh itself changed -- handing over to the new copy` | A pull updated the script, and the running copy exec'd the new one. A SHA it had given up on stays given up |
+| `deploy/ingenium-autodeploy.service changed -- reinstall the unit by hand` | The watcher updates its script, never its unit. Rerun the install lines in § Bring-up |
+
+The settings are environment variables. Their defaults:
+
+| Variable | Default |
+|---|---|
+| `INGENIUM_DEPLOY_INTERVAL_S` | 60 |
+| `INGENIUM_DEPLOY_IMAGE_WAIT_S` | 900 |
+| `INGENIUM_DEPLOY_HEALTH_WAIT_S` | 90 |
+| `INGENIUM_REPO` | `/home/todd/ingenium` |
+| `INGENIUM_DEPLOY_BRANCH` | `main` |
+| `INGENIUM_HEALTH_URL` | `http://127.0.0.1:3100/api/health` |
+
+The script's header documents each one. On orchid, set them with a systemd drop-in, never by editing the installed unit.
+
+**Pausing it for a hand deploy or a desk test on orchid:**
+
+1. `sudo systemctl stop ingenium-autodeploy`.
+2. Pin a tag in `~/ingenium/.env`: any short SHA CI has published, or delete the two lines to fall back to `:latest`.
+3. Run `docker compose -f ~/ingenium/compose.yaml up -d`.
+4. When you're done, `sudo systemctl start ingenium-autodeploy`. The watcher then brings the box back to main.
+
+While it is stopped, merges do not deploy. To try a branch's `compose.yaml`, check the branch out in `~/ingenium` instead: that pauses deploys by itself, and checking `main` back out resumes them.
+
 ### Bring-up
 
 ```bash
 # orchid
 git clone https://github.com/reclinerhead/ingenium.git ~/ingenium
 sudo ss -tlnp | grep 3100                                  # must be empty
-docker compose -f ~/ingenium/compose.yaml up -d
+sudo cp ~/ingenium/deploy/ingenium-autodeploy.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now ingenium-autodeploy            # the first start deploys current main
+journalctl -u ingenium-autodeploy -n 20                    # … deployed <short> (healthy)
 curl -s http://127.0.0.1:3100/api/health                   # {"ok":true,"version":"<sha of main>"}
-docker inspect --format '{{.State.Health.Status}}' ingenium-web   # healthy
 
 # once Caddy and Pi-hole carry the name, from any LAN machine:
 curl -skI https://ingenia.lan/ | head -1                   # HTTP/2 200
 ```
 
-The GHCR package must be **public**: the repo is public, the image holds nothing secret, and orchid pulls with no registry login. A first push can land as private. If `docker compose pull` on orchid answers `denied`, switch the package to public in its GitHub package settings.
+The GHCR package must be **public**: the repo is public, the image holds nothing secret, and orchid pulls with no registry login. A private package looks like CI never publishing anything: the watcher logs `no image for …` for every merge, and `docker manifest inspect ghcr.io/reclinerhead/ingenium-web:latest` answers `unauthorized`. The fix is the package's visibility setting on GitHub.
 
 ### Day-to-day
 
 ```bash
-docker compose -f ~/ingenium/compose.yaml pull && docker compose -f ~/ingenium/compose.yaml up -d   # deploy latest main
-curl -s http://127.0.0.1:3100/api/health    # confirm the SHA
+journalctl -u ingenium-autodeploy -f        # watch a merge deploy
+curl -s http://127.0.0.1:3100/api/health    # which commit is serving
 docker logs ingenium-web --tail 50
 ```
 
-**Merging to main publishes an image but doesn't deploy it.** A deploy is the pull + `up -d` above, run by hand. Pull `git` in `~/ingenium` too when `compose.yaml` itself has changed.
-
-### Testing the image on a desk machine
+### Testing on a desk machine
 
 ```bash
 docker build -f apps/web/Dockerfile --build-arg BUILD_SHA=$(git rev-parse HEAD) -t ingenium-web:local .
 ```
 
-Then run it under the real `compose.yaml` with a one-line override file that sets `services.web.image: ingenium-web:local`, so the read-only root filesystem and tmpfs layout get exercised too.
+Then run the image under the real `compose.yaml` with a one-line override file that sets `services.web.image: ingenium-web:local`. That exercises the read-only root filesystem and the tmpfs layout too.
+
+`deploy/autodeploy.sh --once` runs a single tick and exits, which is how to test the watcher without orchid. It works under Git Bash on Windows as well. Point `INGENIUM_REPO` at a scratch clone whose `origin` is a local bare repo, then exercise each path against a local Docker:
+
+- push commits that have published images and commits that don't;
+- make a tracked edit in the checkout;
+- check out another branch;
+- set a dead `INGENIUM_HEALTH_URL` with a short `INGENIUM_DEPLOY_HEALTH_WAIT_S` to force a rollback.
 
 ## 7. Public repository rules
 
@@ -161,7 +222,8 @@ ADRs in [`docs/decisions/`](decisions/) record the larger decisions. This table 
 | Engine is source-only, no build step | compile to `dist/` | Every consumer (Turbopack, Vitest, Node type stripping) already compiles TS; a build step adds a watch process and stale-output bugs for nothing |
 | Docker on orchid behind Caddy | Vercel | The epic's later milestones need a LAN Ollama and SQLite on a volume; the house box has both and already runs the front door (ADR-0001) |
 | Public GHCR image | private package plus a registry token on orchid | The source is public and the image holds nothing secret |
-| Manual deploys | autodeploy on merge | Not until there is something worth deploying automatically; the web relay's manual rhythm has worked |
+| A pull watcher on orchid deploys CI's SHA-tagged image, with a health check and rollback (ADR-0002) | Watchtower; GitHub Actions over SSH; a self-hosted runner; a webhook receiver | Watchtower is archived (December 2025) and needs the Docker socket, which is root on the box that runs the house DNS. Actions over SSH needs a Tailscale key stored in GitHub and ACL changes. A self-hosted runner would run a public repo's workflow code on the box. A webhook needs a second public door. A 60 s outbound poll needs none of these |
+| Pin the deployed image by SHA tag in `.env` | deploy `:latest` | The running container, `/api/health`, and git name the same commit, and a commit that failed CI can't slip in under a moving tag |
 | Bridge network, loopback publish | host networking | The shell needs none of host networking's benefits (mDNS, DHCP) |
 | Dark mode from the system preference | a class toggle | No toggle exists to drive it; the night edition just follows the reader's OS |
 | ESLint 9, TypeScript 5.9 | ESLint 10, TypeScript 7 | Next 16.3's lint plugins cap at ESLint 9; typescript-eslint caps below TypeScript 6.1 |
