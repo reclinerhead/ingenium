@@ -98,12 +98,12 @@ describe("the rule order", () => {
   it("4. blocked tools are never picked on impulse, and nothing else honours the list", () => {
     const always = { ...sober, impulsivity: 1 };
     for (let seed = 1; seed <= 30; seed++) {
-      const d = decide(calm, { dials: always, rng: streams(seed).get("impulse"), blocked: ["pursue_hobby", "listen_to_music"] });
+      const d = decide(calm, { dials: always, rng: streams(seed).get("impulse"), blocked: ["pursue_hobby", "listen_to_music", "take_a_walk"] });
       expect(d.rule).toBe("impulse");
       expect(["eat", "sleep"]).toContain(d.tool);
     }
     // With everything blocked there is no whim to have; the rules continue.
-    expect(decide(calm, { dials: always, blocked: ["eat", "sleep", "listen_to_music", "pursue_hobby", "reflect"] }).rule).toBe("idle");
+    expect(decide(calm, { dials: always, blocked: ["eat", "sleep", "listen_to_music", "pursue_hobby", "reflect", "take_a_walk"] }).rule).toBe("idle");
     // An urge still reaches a blocked tool.
     expect(decide(at({ boredom: 0.6 }), { blocked: ["pursue_hobby"] })).toMatchObject({ tool: "pursue_hobby", rule: "urge" });
   });
