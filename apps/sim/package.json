@@ -1,0 +1,22 @@
+{
+  "name": "sim",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The command-line runner for the Ingenium Engine: runs a seed and prints or writes the event log.",
+  "type": "module",
+  "scripts": {
+    "sim": "node src/main.ts",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ingenium": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^24",
+    "eslint": "^9.39.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.0"
+  }
+}
