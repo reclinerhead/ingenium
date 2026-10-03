@@ -8,6 +8,9 @@ node_modules/
 # testing
 coverage/
 
+# sim run folders (pnpm sim --out); reproducible from their seed
+runs/
+
 # next.js
 .next/
 out/

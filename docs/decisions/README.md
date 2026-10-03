@@ -37,3 +37,4 @@ Each option, and why it lost.
 |---|---|---|
 | [0001](0001-stack-and-hosting.md) | Stack and hosting | Accepted; decision 4 superseded by 0002 |
 | [0002](0002-autodeploy-on-orchid.md) | Autodeploy on orchid | Accepted |
+| [0003](0003-event-log.md) | The event log | Accepted |
