@@ -54,9 +54,13 @@ export const RECLUSE_MIND: MindWeights = {
     listen_to_music: 0.6,
     // He means to reflect more than he does.
     reflect: 0.4,
-    // He means to get out more than he does. Low enough that it is
-    // planned on roughly a third of days, at priority 1.
-    take_a_walk: 0.3,
+    // He means to get out more than he does, but not by much. Planned on
+    // about one day in six, at priority 1: rare enough that the walk
+    // usually lands on a Walt who is already shut in, which is when it is
+    // worth something. Each walk undoes about a day of loneliness's climb,
+    // so at 0.3 three walks a week kept him out of the urgent band
+    // entirely and the weekend lost its fight.
+    take_a_walk: 0.15,
     // Meals are planned, but as punctuation, not as the point.
     eat: 0.5,
     // The body schedules sleep.
