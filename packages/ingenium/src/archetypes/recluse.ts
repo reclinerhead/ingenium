@@ -14,6 +14,7 @@
  */
 
 import type { BrainDials } from "../brain/dials.ts";
+import type { MindWeights } from "../mind/weights.ts";
 
 export const RECLUSE_BRAIN: BrainDials = {
   drift: {
@@ -33,11 +34,43 @@ export const RECLUSE_BRAIN: BrainDials = {
     loneliness: 0.012,
   },
   willpower: {
-    // Middling. A Warden would be around 3, a Trickster below 1.
-    depth: 1.5,
-    // About a quarter of a bar back per day from rest alone; sleep adds more.
-    refill: 0.02,
+    // Shallow. A Warden would be around 3, a Socialite near 1.5. Walt's
+    // plans are sincere and his resolve is not: that is the Recluse.
+    depth: 0.8,
+    // A trickle: about an eighth of a bar back per day from rest alone.
+    // Sleep adds about a third more. Sized together with the intention
+    // costs so that a day spent holding a plan against the body can run
+    // him dry by evening, when the brain wins and the mind rationalizes.
+    refill: 0.01,
   },
   // Low. A Recluse does what he always does.
   impulsivity: 0.08,
+};
+
+export const RECLUSE_MIND: MindWeights = {
+  affinity: {
+    // The workbench and the record player are what he plans his day around.
+    pursue_hobby: 0.9,
+    listen_to_music: 0.6,
+    // He means to reflect more than he does.
+    reflect: 0.4,
+    // Meals are planned, but as punctuation, not as the point.
+    eat: 0.5,
+    // The body schedules sleep.
+    sleep: 0,
+  },
+  // Three things a day. A Socialite would plan six; a Recluse's days are
+  // long and he likes them empty.
+  density: 3,
+  // Loosely held. His intentions are real but he doesn't grip them; the
+  // first strong urge to the contrary usually wins. A Warden would be 1.5.
+  fidelity: 0.8,
+  tendencies: [
+    // Not before coffee: no workbench before 08:00. Nearly always.
+    { policy: { kind: "not_before", tool: "pursue_hobby", slot: 4 }, chance: 0.9 },
+    // Three meals is plenty. Most days.
+    { policy: { kind: "at_most", tool: "eat", n: 3 }, chance: 0.7 },
+  ],
+  // He'll carry an unfinished intention over for two days, then let it go.
+  persistence: 2,
 };

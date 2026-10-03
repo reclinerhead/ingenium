@@ -39,6 +39,9 @@ import type { MoodBand, NeedBand } from "./brain/bands.ts";
 import type { Depletion, Overrode, Rule } from "./brain/scheduler.ts";
 import type { Need } from "./brain/state.ts";
 import type { Urge } from "./brain/urges.ts";
+import type { BreakReason, HabitContext, Mechanism, StrengthBand } from "./habits/observer.ts";
+import type { Distortion } from "./mind/memory.ts";
+import type { PlannedIntention, Policy, Priority } from "./mind/plan.ts";
 import type { Changes, ToolId } from "./tools/catalog.ts";
 
 /**
@@ -84,10 +87,9 @@ export type Layer = (typeof LAYERS)[number];
  * vocabulary: appending a type that isn't a key here is a compile error, and
  * so is appending the wrong `data` shape for a type.
  *
- * M0.1 defines the run and day boundaries and M0.2 the brain's families.
- * Later issues add theirs here, and only here:
+ * M0.1 defines the run and day boundaries, M0.2 the brain's families, and
+ * M0.3 the mind's. Later issues add theirs here, and only here:
  *
- *   plan.*  intention.*  habit.*  memory.*          M0.3, the mind (#10)
  *   belief.*                                        M0.5 and M4
  *   director.*                                      the Director
  *
@@ -142,6 +144,37 @@ export interface EventCatalog {
   "tool.used": { tool: ToolId; changes: Changes };
   /** An intention lost to an urge because the willpower bar couldn't cover the override. */
   "willpower.depleted": Depletion;
+
+  // --- The mind (M0.3). actor is the resident, layer is "mind". -----------
+
+  /** The day's plan after validation and shaping (mind/plan.ts). `habits` are the due habits placed first. */
+  "plan.made": {
+    intentions: readonly PlannedIntention[];
+    policies: readonly Policy[];
+    habits: readonly { habit_id: string; tool: ToolId; slot: number }[];
+    /** How many of the intentions were carried over by yesterday's review. */
+    carried: number;
+  };
+  /** An intention was acted on inside its window, by whatever rule chose the tool. */
+  "intention.kept": { tool: ToolId; slot: number; priority: Priority; rule: Rule };
+  /** The evening review gave up on an intention. `carried` is how many days it had been carried. */
+  "intention.dropped": { tool: ToolId; priority: Priority; reason: "window_passed" | "overridden"; carried: number };
+  /**
+   * A memory formed (mind/memory.ts). `of` is the source event: the join
+   * from what is remembered to what happened. `rationalized` marks a
+   * memory of the brain overriding the mind.
+   */
+  "memory.formed": { memory_id: string; of: number; salience: number; distortion: Distortion };
+  /** A habit formed (habits/observer.ts). Causes are the evidence events. */
+  "habit.formed": { habit_id: string; tool: ToolId; context: HabitContext; mechanism: Mechanism; strength: number };
+  /** Strength crossed up into a new band. */
+  "habit.strengthened": { habit_id: string; tool: ToolId; from: StrengthBand; to: StrengthBand; strength: number };
+  /** Strength crossed down into a new band. */
+  "habit.weakened": { habit_id: string; tool: ToolId; from: StrengthBand; to: StrengthBand; strength: number };
+  /** The habit graveyard: strength reached zero. `lived_days` is the lifetime. */
+  "habit.broken": { habit_id: string; tool: ToolId; formed_day: number; lived_days: number; reason: BreakReason };
+  /** The evening review's totals for the day. */
+  "day.reviewed": { kept: number; dropped: number; carried: number; overrides: number; habits_formed: number; habits_broken: number };
 }
 
 export type EventType = keyof EventCatalog;
@@ -163,6 +196,15 @@ export const EVENT_TYPES = [
   "tool.chosen",
   "tool.used",
   "willpower.depleted",
+  "plan.made",
+  "intention.kept",
+  "intention.dropped",
+  "memory.formed",
+  "habit.formed",
+  "habit.strengthened",
+  "habit.weakened",
+  "habit.broken",
+  "day.reviewed",
 ] as const satisfies readonly EventType[];
 
 // ---------------------------------------------------------------------------

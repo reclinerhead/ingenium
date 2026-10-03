@@ -85,6 +85,29 @@ describe("the rule order", () => {
     expect(d2.cost).toBe(overrideCost(0.5 - musicServes, sober.willpower.depth));
   });
 
+  it("3. a firmer intention pays less for the same gap (fidelity, M0.3)", () => {
+    // The price of holding, whether it was paid or (when the bar couldn't cover it) merely needed.
+    const price = (d: Decision) => d.cost || d.depleted?.needed || 0;
+    const loose = decide(at({ hunger: 0.7 }), { intentions: [{ tool: "listen_to_music", firmness: 0.5 }] });
+    const plain = decide(at({ hunger: 0.7 }), { intentions: [{ tool: "listen_to_music" }] });
+    const firm = decide(at({ hunger: 0.7 }), { intentions: [{ tool: "listen_to_music", firmness: 2 }] });
+    expect(price(loose)).toBeCloseTo(price(plain) * 2);
+    expect(price(firm)).toBeCloseTo(price(plain) / 2);
+  });
+
+  it("4. blocked tools are never picked on impulse, and nothing else honours the list", () => {
+    const always = { ...sober, impulsivity: 1 };
+    for (let seed = 1; seed <= 30; seed++) {
+      const d = decide(calm, { dials: always, rng: streams(seed).get("impulse"), blocked: ["pursue_hobby", "listen_to_music"] });
+      expect(d.rule).toBe("impulse");
+      expect(["eat", "sleep"]).toContain(d.tool);
+    }
+    // With everything blocked there is no whim to have; the rules continue.
+    expect(decide(calm, { dials: always, blocked: ["eat", "sleep", "listen_to_music", "pursue_hobby", "reflect"] }).rule).toBe("idle");
+    // An urge still reaches a blocked tool.
+    expect(decide(at({ boredom: 0.6 }), { blocked: ["pursue_hobby"] })).toMatchObject({ tool: "pursue_hobby", rule: "urge" });
+  });
+
   it("3. a deeper willpower pays less for the same gap", () => {
     const shallow = decide(at({ hunger: 0.7 }), { intentions: [{ tool: "listen_to_music" }], dials: { ...sober, willpower: { depth: 1, refill: 0 } } });
     const deep = decide(at({ hunger: 0.7 }), { intentions: [{ tool: "listen_to_music" }], dials: { ...sober, willpower: { depth: 3, refill: 0 } } });

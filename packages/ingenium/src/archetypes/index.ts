@@ -9,8 +9,9 @@
  */
 
 import type { BrainDials } from "../brain/dials.ts";
+import type { MindWeights } from "../mind/weights.ts";
 import type { Archetype } from "../run.ts";
-import { RECLUSE_BRAIN } from "./recluse.ts";
+import { RECLUSE_BRAIN, RECLUSE_MIND } from "./recluse.ts";
 
 /** The brain dials for an archetype. */
 export function brainDialsFor(archetype: Archetype): BrainDials {
@@ -19,5 +20,15 @@ export function brainDialsFor(archetype: Archetype): BrainDials {
       return RECLUSE_BRAIN;
     default:
       throw new RangeError(`archetype "${archetype}" has no brain dials yet (they arrive with M3)`);
+  }
+}
+
+/** The mind weights for an archetype. */
+export function mindWeightsFor(archetype: Archetype): MindWeights {
+  switch (archetype) {
+    case "recluse":
+      return RECLUSE_MIND;
+    default:
+      throw new RangeError(`archetype "${archetype}" has no mind weights yet (they arrive with M3)`);
   }
 }

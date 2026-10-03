@@ -46,9 +46,12 @@ Everything is exported from `src/index.ts`. Each module has a `*.test.ts` beside
 | `jsonl.ts` | `stableJson` (named keys first, the rest alphabetical, nested keys alphabetical) and `toJsonl`. `eventsToJsonl` and `snapshotsToJsonl` apply the envelope's key order. A test runs one seed twice and asserts byte-identical output. |
 | `brain/` | The fast layer: `state.ts` (needs, mood, arousal, willpower), `dials.ts` (the archetype's numbers), `drift.ts` (per-slot change when nothing is done), `bands.ts` (thresholds with hysteresis), `urges.ts` (state to ranked urge pressures), `scheduler.ts` (one tool per slot by an ordered set of rules, and willpower), `brain.ts` (all of it as `SimHooks`). § The brain, below. |
 | `tools/catalog.ts` | The five tools, each tagged with the urges it satisfies, with state-dependent effects and conditions. `applyTool` is the one place brain state changes other than drift. |
-| `archetypes/` | One file per archetype holding its dials (`recluse.ts` today), and `brainDialsFor(archetype)`. |
+| `mind/` | The slow layer: `plan.ts` (the plan contract: types, `validatePlan` over an unknown value, `shapePlan` for density), `briefing.ts` (what the planner is told), `planner.ts` (the stub planner on the `plan` stream), `memory.ts` (the memory stream and `salience`), `weights.ts` (the archetype's mind weights), `mind.ts` (dawn, after-step, evening as hooks). § The mind, below. |
+| `habits/observer.ts` | The habit observer: context and outcome of every tool use, four formation mechanisms, strength bands, the graveyard. Feeds the scheduler's rule 2. |
+| `archetypes/` | One file per archetype holding its brain dials and mind weights (`recluse.ts` today), and `brainDialsFor` / `mindWeightsFor`. |
+| `resident.ts` | `standardHooks()`: brain and mind composed for the loop. The brain steps and logs; then the mind reads what happened. What `pnpm sim` runs. |
 
-The mind (#10) plugs into the loop's hooks beside the brain. The loop's default is no hooks; `apps/sim` passes `brainHooks()`, and M0.3 composes the mind's hooks in the same place. **Every non-deterministic input** to a run (LLM output, player actions; Milestone 0 has neither) is appended as a recorded event through the same path, and the hooks object is where a replay substitutes recorded events for a model call.
+The loop's default is no hooks; `apps/sim` passes `standardHooks()`. **Every non-deterministic input** to a run (LLM output, player actions; Milestone 0 has neither) is appended as a recorded event through the same path, and the hooks object is where a replay substitutes recorded events for a model call.
 
 ### The brain
 
@@ -93,7 +96,47 @@ Rule 5 refines the epic's order, which went from impulse straight to idle. Under
 
 An unmet urge's **stretch** is keyed by the band of the need behind it: "pulling" below urgent, "urgent" at urgent. The brain logs `urge.unmet` when a stretch begins and not again until it changes, so a meal or a nap winning the slot doesn't restart the count; loneliness that climbs all week produces two events, not one per interruption. An urge with no need behind it (`flee`) is a stretch while it stays unmet.
 
-**Walt's dials** (`archetypes/recluse.ts`): drift per slot hunger 0.07, fatigue 0.06 (before the time-of-day scaling), boredom 0.08, loneliness 0.012; willpower depth 1.5, refill 0.02; impulsivity 0.08. Nothing in M0 lowers loneliness, so it reaches `low` on day 3 and `urgent` on day 5, after which the pressure on mood and arousal makes his weekend restless. These are first guesses; reading his week is M0's exit criterion, and they will move.
+**Walt's brain dials** (`archetypes/recluse.ts`): drift per slot hunger 0.07, fatigue 0.06 (before the time-of-day scaling), boredom 0.08, loneliness 0.012; willpower depth 0.8, refill 0.01; impulsivity 0.08. Nothing in M0 lowers loneliness, so it reaches `low` on day 3 and `urgent` on day 5, after which the pressure on mood and arousal makes his weekend restless. These are first guesses; reading his week is M0's exit criterion, and they will move.
+
+### The mind
+
+The slow layer: it plans at dawn, watches after every slot, and reviews in the evening. It never touches brain state. It steers the brain through three seams the brain exposes (`BrainOptions`): the intentions for the slot, the habits that are due, and the tools its policies rule out for a whim. In Milestone 0 it is a **deterministic stub**; its only randomness is the `plan` stream. The LLM mind (M6) replaces the planner and nothing else.
+
+**The plan contract** (`mind/plan.ts`). A plan is intentions (`{ tool, from, to, priority }`, slots inclusive, priority 1 to 3) and policies from a closed vocabulary: `not_before(tool, slot)`, `at_most(tool, n)`, `avoid(tool)`. `validatePlan` takes an *unknown* value, collects every error, and returns a typed `Plan` holding only the recognised fields; the stub planner's output goes through it like a model's would, and a test holds that it always passes. After validation the archetype disposes: `shapePlan` caps intentions at the archetype's **density** (highest priority first, then earliest), and the mind hands each intention to the scheduler with the archetype's **fidelity** as its `firmness`, a multiplier on willpower depth while holding it. Policies bind the mind's own choices (an intention a policy disallows isn't offered) and the brain's whims (rule 4 skips blocked tools); an urgent need or a strong urge ignores them, and holding a policy against those is a willpower fight a later milestone adds.
+
+**The briefing** (`mind/briefing.ts`) is what the planner is told: the day, the brain's state and bands, the living habits, the intentions carried from yesterday's review, and yesterday's totals. It is the same object the model will see.
+
+**The stub planner** (`mind/planner.ts`) draws policies first (each tendency by its chance), then places habits (each claims its slot), then carried intentions, then new intentions by **affinity** until the day has `density`, each in a window its tool suits (`TOOL_WINDOWS`: meals morning, midday, or evening; the workbench in daylight; records and reflection in the evening), shrunk around claimed slots and clipped by any `not_before`. No two intentions for one tool; never sleep. Priority leans on affinity.
+
+**Memory** (`mind/memory.ts`). A memory is `{ id, of, salience, distortion }`: a pointer at an event with how much it stands out and how it has been bent. `salience` is a pure function of the event (a lost fight 0.9, a broken habit 0.8, a formed one 0.6, an unmet urge 0.4 + 0.4 × pressure, a mood shift 0.6 into a band, a tool use twice its mood effect). Events at or above the floor (0.5) become memories; the day's furniture doesn't. When the brain overrides the mind, the memory of the `tool.chosen` is tagged **`rationalized`**: the mind telling itself a story the log contradicts, which the diary will one day render and the "two columns" will one day show. Comparing what is remembered with what happened is the join from `memory.formed.data.of` to the source event (docs/event-log.md).
+
+**The habit observer** (`habits/observer.ts`). Every `tool.used` is an observation: the slot, the previous tool, the mood band, whether under stress (arousal ≥ 0.5 or mood low), and the **outcome**, the mood the tool brought plus a quarter of the need it relieved. A habit is keyed by tool and slot. Four mechanisms, one habit at most per key:
+
+| Mechanism | Forms when | Starts at |
+|---|---|---|
+| reinforcement | three good outcomes (≥ 0.1) for the key within seven days | 0.5 |
+| accident | one strong outcome (≥ 0.4). No M0 tool reaches it; dormant on purpose | 0.35 |
+| superstition | three times, the slot after a tool that did *not* feel good, something else felt good. The first tool gets the credit it didn't earn | 0.3 |
+| coping | twice under stress without harm (outcome ≥ 0) | 0.4 |
+
+Strength is 0..1 in three bands with hysteresis (`fragile` < 0.3/0.4 `settled` < 0.6/0.7 `ingrained`). Performed with a good outcome +0.1; performed with a poor one (< 0.08, a nap when rested, a meal when full) −0.1; skipped when due −0.15. `habit.strengthened` and `habit.weakened` fire on band crossings only. At zero the habit is **broken**, and `habit.broken` with its formed day, lifetime, and reason is the graveyard. Living habits feed the scheduler's rule 2 at their slot, so a formed habit changes what the resident does, and a habit that keeps paying off ratchets: nothing in M0 disturbs it (§ Reading a run).
+
+**Walt's mind weights** (`archetypes/recluse.ts`): affinity hobby 0.9, music 0.6, eat 0.5, reflect 0.4, sleep 0; density 3; fidelity 0.8 (loosely held); tendencies `not_before(pursue_hobby, 08:00)` at 0.9 and `at_most(eat, 3)` at 0.7; persistence 2 days.
+
+**The evening review.** Intentions not kept are carried (priority 2 or more, within persistence) or dropped (`intention.dropped`, with the reason). `day.reviewed` totals kept, dropped, carried, overrides, habits formed and broken, and is what tomorrow's plan cites.
+
+**One day, in order** (`resident.ts`): dawn, mind plans → each slot, brain steps and logs, then mind reads the slot's events: `intention.kept` for a planned tool used in its window, a `rationalized` memory for a lost fight, the observer's habit events with their evidence as causes, memories of anything salient, and skipped habits weakened → evening, mind reviews.
+
+### Reading a run
+
+`pnpm sim --seed 42` is Walt's week. What to look for, and where it comes from:
+
+- **The shape of a day.** Sleep in a block from about 22:00 to 06:00, two or three meals, the workbench, and dead afternoons. The afternoons are the brain being the brain: once lunch and the hobby have cleared the needs, nothing is above the floor until dinner. Plans fill some of that; habits fill more as the week goes on.
+- **Habits forming.** Sleep habits at the night slots form by Wednesday or Thursday (three nights is three pieces of evidence) and go `ingrained` by the weekend. Meals and the workbench follow at whichever slots the plan kept putting them. By Saturday the plan's `habits` list is longer than its intentions, and most slots are `(habit)`. **The ratchet:** a habit that pays off strengthens, rule 2 makes it fire before anything but an urgent need, and nothing in M0 changes Walt's context, so in one week habits form and almost never die. Over two weeks a few weaken (a nap by habit when already rested is a poor outcome) and a rare one breaks. Neighbours, events, and the Director are what will break them.
+- **Overrides and the rationalizations beside them.** `(intention, overrode …, willpower −…)` is the mind holding a plan against an urge and paying. `willpower out: … needed X, had Y; withdraw wins`, then `reflect (urge: withdraw …, over intention pursue_hobby)`, then `remembers #N as rationalized` is the brain winning. In Walt's week this happens on Sunday: loneliness has been urgent since Friday, the pressure keeps arousal high, `withdraw` is strong all day, and the willpower he spends holding his plan in the morning is gone by afternoon. The `rationalized` memory points at the decision that contradicts it.
+- **Unmet urges.** `urge approach (…) has no tool` on Tuesday afternoon when loneliness first clears the floor, and again Friday noon when it goes urgent. Nothing answers it, and the mood drop Sunday morning cites it through the loneliness crossing.
+- **How seeds diverge.** The only randomness is impulse (about 8% of slots) and the planner's draws (which tool, which window, which policies). The arc is the dials': routine, loneliness, a restless weekend, a lost fight on Sunday. What differs is the texture: which slots the habits settle into, whether Walt pays for his plan on Monday or coasts, whether a `coping` habit forms under Sunday's stress, how high his mood gets after a good morning. Seeds 42, 7, and 44 are compared in the pull request that closed #10.
+- **The checkpoint.** Whether this week is interesting to read is Milestone 0's exit criterion, and a judgment, not a test. If it isn't, the next issue fixes the sim, not the prose.
 
 ### The fence
 
@@ -148,7 +191,7 @@ Loosening any of these is an architectural decision, so write an ADR first.
 
 | Invocation | Does |
 |---|---|
-| `pnpm sim` | Walt's week (`--seed 1 --days 7`), one rendered line per event |
+| `pnpm sim` | Walt's week (`--seed 1 --days 7`) under brain and mind (`standardHooks()`), one rendered line per event |
 | `pnpm sim --seed <n or string> --days <n>` | another seed or length. A numeric seed is a number, anything else a string |
 | `pnpm sim --json` | the events as JSONL on stdout instead |
 | `pnpm sim --out` | writes a run folder to `runs/seed-<seed>/` (gitignored) and prints a one-line summary on stderr |
@@ -315,7 +358,13 @@ ADRs in [`docs/decisions/`](decisions/) record the larger decisions. This table 
 | Sleep is an ordinary tool, with sleep pressure gated by the hour (two-process model) | a night schedule, or a `sleep` rule | Insomnia and oversleeping can emerge; the gate alone puts 88% of Walt's sleep at night |
 | The scheduler acts on the strongest urge above a floor (rule 5) | the epic's order, impulse straight to idle | The brain's urges are its normal output; without the rule a resident idles until a crisis |
 | The willpower gap compares urge pressures, not catalog weights | gap from pressure × weight | Weights rank tools within an urge; the fight is between urges. An intention that answers the top urge at all is free |
-| The loop's default hooks stay empty; the CLI passes `brainHooks()` | `runSim` defaults to the brain | The loop is the loop; what runs on it is the caller's choice, and M0.3 composes brain and mind in the same place |
+| The loop's default hooks stay empty; the CLI passes `standardHooks()` | `runSim` defaults to a whole resident | The loop is the loop; what runs on it is the caller's choice, and `resident.ts` is the one place brain and mind are composed |
+| The planner emits an untyped object and the mind validates it | a typed planner the mind trusts | The stub stands where the model will stand; "LLM proposes, archetype disposes" has to be exercised before there is an LLM |
+| Density and fidelity are applied after validation, by the mind | folded into the planner | The archetype's say over a plan can't depend on the planner being well behaved; a model's plan gets the same treatment |
+| Habits are keyed by tool and slot; the rest of the context is recorded, not matched | match on previous tool and mood too | A key that specific almost never recurs in a week; "the workbench at 08:00" is what a habit is, and the context is there for analysis |
+| Habits feed rule 2 directly, ahead of intentions | habits as high-priority intentions | A habit is what runs without being chosen; placing it in the plan would make it a choice. The plan lists due habits so the reader sees them |
+| Memories point at events; prose is rendered later | memories as text | Same as the log: the "two columns" are a join, and a rationalization is a tag on a pointer, not a sentence |
+| Policies bind the mind's choices and the brain's whims, not its urges | block the tool everywhere | Holding a policy against a real urge is a willpower fight, which M0 only has for intentions; blocking silently would hide it |
 | Docker on orchid behind Caddy | Vercel | The epic's later milestones need a LAN Ollama and SQLite on a volume; the house box has both and already runs the front door (ADR-0001) |
 | Public GHCR image | private package plus a registry token on orchid | The source is public and the image holds nothing secret |
 | A pull watcher on orchid deploys CI's SHA-tagged image, with a health check and rollback (ADR-0002) | Watchtower; GitHub Actions over SSH; a self-hosted runner; a webhook receiver | Watchtower is archived (December 2025) and needs the Docker socket, which is root on the box that runs the house DNS. Actions over SSH needs a Tailscale key stored in GitHub and ACL changes. A self-hosted runner would run a public repo's workflow code on the box. A webhook needs a second public door. A 60 s outbound poll needs none of these |

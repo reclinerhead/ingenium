@@ -73,8 +73,48 @@ export type { Decision, Depletion, Intention, Overrode, Rule, ScheduleInput } fr
 export { brainHooks } from "./brain/brain.ts";
 export type { BrainOptions } from "./brain/brain.ts";
 
+export { createBrain } from "./brain/brain.ts";
+export type { Brain } from "./brain/brain.ts";
+
+// The mind (M0.3).
+export { MAX_INTENTIONS, POLICY_KINDS, PRIORITIES, policyAllows, shapePlan, validatePlan } from "./mind/plan.ts";
+export type { Plan, PlannedIntention, Policy, Priority, Validation } from "./mind/plan.ts";
+export { brief } from "./mind/briefing.ts";
+export type { Briefing, CarriedIntention, ReviewSummary } from "./mind/briefing.ts";
+export { TOOL_WINDOWS, stubPlanner } from "./mind/planner.ts";
+export type { RawPlan } from "./mind/planner.ts";
+export { DISTORTIONS, MEMORY_FLOOR, MemoryStream, salience } from "./mind/memory.ts";
+export type { Distortion, Memory } from "./mind/memory.ts";
+export type { MindWeights } from "./mind/weights.ts";
+export { createMind } from "./mind/mind.ts";
+export type { Mind, MindOptions } from "./mind/mind.ts";
+export { standardHooks } from "./resident.ts";
+export type { StandardOptions } from "./resident.ts";
+
+// Habits.
+export {
+  COPING_COUNT,
+  EVIDENCE_DAYS,
+  GOOD_OUTCOME,
+  HabitObserver,
+  INITIAL_STRENGTH,
+  MECHANISMS,
+  PERFORMED_GOOD,
+  PERFORMED_POOR,
+  POOR_OUTCOME,
+  REINFORCEMENT_COUNT,
+  SKIPPED,
+  STRENGTH_BANDS,
+  STRENGTH_THRESHOLDS,
+  STRONG_OUTCOME,
+  SUPERSTITION_COUNT,
+  nextStrengthBand,
+  outcomeOf,
+} from "./habits/observer.ts";
+export type { BreakReason, Habit, HabitChanges, HabitContext, Mechanism, Observation, StrengthBand } from "./habits/observer.ts";
+
 // Tools and archetypes.
 export { TOOLS, TOOL_IDS, applyTool, availableTools, bestToolFor, isAvailable } from "./tools/catalog.ts";
 export type { Changes, Effects, Tool, ToolId } from "./tools/catalog.ts";
-export { brainDialsFor } from "./archetypes/index.ts";
-export { RECLUSE_BRAIN } from "./archetypes/recluse.ts";
+export { brainDialsFor, mindWeightsFor } from "./archetypes/index.ts";
+export { RECLUSE_BRAIN, RECLUSE_MIND } from "./archetypes/recluse.ts";

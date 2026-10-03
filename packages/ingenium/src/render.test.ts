@@ -77,9 +77,49 @@ describe("renderEvent", () => {
     ).toBe("willpower out: pursue_hobby needed 0.3, had 0.12; rest wins");
   });
 
+  it("renders the mind's types: a plan as a list, everything else as one fact", () => {
+    const m = { ...base, layer: "mind" } as const;
+    expect(
+      describeEvent({
+        ...m,
+        type: "plan.made",
+        data: {
+          intentions: [{ tool: "eat", from: 3, to: 4, priority: 2 }],
+          policies: [{ kind: "not_before", tool: "pursue_hobby", slot: 4 }, { kind: "at_most", tool: "eat", n: 3 }],
+          habits: [{ habit_id: "h1", tool: "sleep", slot: 0 }],
+          carried: 1,
+        },
+      }),
+    ).toBe("plan: intends eat 06:00–10:00 p2; habits sleep 00:00 (h1); policies: not pursue_hobby before 08:00; eat at most 3; (1 carried over)");
+    expect(describeEvent({ ...m, type: "plan.made", data: { intentions: [], policies: [], habits: [], carried: 0 } })).toBe("plan: intends nothing");
+    expect(describeEvent({ ...m, type: "intention.kept", data: { tool: "eat", slot: 3, priority: 2, rule: "urge" } })).toBe("kept intention eat (p2, by urge)");
+    expect(describeEvent({ ...m, type: "intention.dropped", data: { tool: "reflect", priority: 1, reason: "window_passed", carried: 0 } })).toBe(
+      "dropped intention reflect (p1, window passed)",
+    );
+    expect(describeEvent({ ...m, type: "memory.formed", data: { memory_id: "m3", of: 57, salience: 0.9, distortion: "rationalized" } })).toBe(
+      "remembers #57 as rationalized (m3, salience 0.9)",
+    );
+    expect(
+      describeEvent({
+        ...m,
+        type: "habit.formed",
+        data: { habit_id: "h2", tool: "pursue_hobby", context: { slot: 4, previous_tool: "eat", mood_band: "neutral" }, mechanism: "reinforcement", strength: 0.5 },
+      }),
+    ).toBe("habit h2 formed: pursue_hobby at 08:00, by reinforcement (strength 0.5)");
+    expect(describeEvent({ ...m, type: "habit.weakened", data: { habit_id: "h2", tool: "pursue_hobby", from: "settled", to: "fragile", strength: 0.25 } })).toBe(
+      "habit h2 (pursue_hobby) settled → fragile (0.25)",
+    );
+    expect(describeEvent({ ...m, type: "habit.broken", data: { habit_id: "h2", tool: "pursue_hobby", formed_day: 3, lived_days: 4, reason: "skipped" } })).toBe(
+      "habit h2 (pursue_hobby) broken after 4 days: skipped",
+    );
+    expect(describeEvent({ ...m, type: "day.reviewed", data: { kept: 2, dropped: 1, carried: 0, overrides: 1, habits_formed: 1, habits_broken: 0 } })).toBe(
+      "review: kept 2, dropped 1, carried 0, overrides 1, habits +1 −0",
+    );
+  });
+
   it("falls back to type and data for an unknown type, so nothing is invisible", () => {
-    const foreign = { ...base, type: "habit.formed", data: { tool: "listen_to_music", slot: 9 } } as unknown as SimEvent;
-    expect(describeEvent(foreign)).toBe('habit.formed {"tool":"listen_to_music","slot":9}');
-    expect(renderEvent(foreign)).toBe('Mon 08:00  walt      habit.formed {"tool":"listen_to_music","slot":9}');
+    const foreign = { ...base, type: "belief.revised", data: { about: "observer", stance: "benign" } } as unknown as SimEvent;
+    expect(describeEvent(foreign)).toBe('belief.revised {"about":"observer","stance":"benign"}');
+    expect(renderEvent(foreign)).toBe('Mon 08:00  walt      belief.revised {"about":"observer","stance":"benign"}');
   });
 });

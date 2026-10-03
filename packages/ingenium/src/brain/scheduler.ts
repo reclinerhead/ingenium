@@ -51,6 +51,13 @@ export type Rule = (typeof RULES)[number];
  */
 export interface Intention {
   readonly tool: ToolId;
+  /**
+   * How firmly the intention binds, as a multiplier on willpower depth while
+   * holding it. 1 (the default) is the archetype's plain depth; a firmer
+   * intention (fidelity above 1) makes the same override cheaper, a looser
+   * one dearer. The mind sets this from the archetype's fidelity.
+   */
+  readonly firmness?: number;
 }
 
 /**
@@ -104,6 +111,13 @@ export interface ScheduleInput {
   readonly dials: BrainDials;
   /** The `impulse` stream. Drawn from only when rule 4 is reached. */
   readonly rng: Rng;
+  /**
+   * Tools the mind's policies rule out for a whim (M0.3). Rule 4 won't pick
+   * them. Nothing else honours this list: an urgent need or a strong urge
+   * still reaches for whatever answers it, and whether the mind can hold a
+   * policy against that is a willpower question for a later milestone.
+   */
+  readonly blocked?: readonly ToolId[];
 }
 
 /**
@@ -184,7 +198,9 @@ export function schedule(input: ScheduleInput): Decision {
     const gap = top ? Math.max(0, top.urge.pressure - servedBy(intended, urges)) : 0;
     if (gap === 0) return { tool: intention.tool, rule: "intention", cost: 0, unmet };
 
-    const cost = overrideCost(gap, dials.willpower.depth);
+    // Firmness scales the depth: a firmly held intention makes the same
+    // gap cheaper to hold against.
+    const cost = overrideCost(gap, dials.willpower.depth * (intention.firmness ?? 1));
     if (state.willpower >= cost) {
       // The mind wins, and pays for it.
       const t = top as { urge: UrgePressure; tool: Tool };
@@ -221,9 +237,11 @@ export function schedule(input: ScheduleInput): Decision {
   // --- 4. Impulse ---------------------------------------------------------
   // Two draws at most, in a fixed order: whether, then what. Only reached
   // when nothing above decided, so the stream's position depends on state,
-  // which is fine: the state is itself a function of the seed.
-  if (available.length > 0 && rng.chance(dials.impulsivity)) {
-    return { tool: rng.pick(available).id, rule: "impulse", cost: 0, unmet };
+  // which is fine: the state is itself a function of the seed. Policies
+  // (the mind's `blocked` list) veto whims; they're cheap to honour here.
+  const whims = input.blocked ? available.filter((t) => !input.blocked?.includes(t.id)) : available;
+  if (whims.length > 0 && rng.chance(dials.impulsivity)) {
+    return { tool: rng.pick(whims).id, rule: "impulse", cost: 0, unmet };
   }
 
   // --- 5. Urge ------------------------------------------------------------

@@ -77,13 +77,30 @@ All with `actor` the resident and `layer: "brain"`. The brain's events say what 
 
 Levels in `data` are rounded to four places. Idle slots have a `tool.chosen` and no `tool.used`.
 
+### The mind (M0.3)
+
+All with `actor` the resident and `layer: "mind"`. See the Technical Guide § The mind for the mechanics.
+
+| Type | When | `data` | Causes |
+|---|---|---|---|
+| `plan.made` | each dawn, after the planner's proposal validated and the archetype's density was applied | `intentions`: `[{ tool, from, to, priority }]` (slots inclusive, priority 1–3); `policies`: `[{ kind: "not_before", tool, slot } \| { kind: "at_most", tool, n } \| { kind: "avoid", tool }]`; `habits`: the living habits placed first, `[{ habit_id, tool, slot }]`; `carried`: how many intentions came from yesterday's review | yesterday's `day.reviewed` |
+| `intention.kept` | a planned tool was used inside its window, by whatever rule chose it | `tool`, `slot`, `priority`, `rule` | the `plan.made` and the `tool.used` |
+| `intention.dropped` | the evening review gave up on an intention (priority 1, or carried past the archetype's persistence) | `tool`, `priority`, `reason` (`window_passed`, `overridden`), `carried` | the `plan.made` |
+| `memory.formed` | an event crossed the salience floor, or the brain overrode the mind | `memory_id` (`m1`…), `of` (the source event's ID), `salience` (0..1), `distortion` (`none`, `rationalized`) | the source event, plus the `willpower.depleted` for a rationalization |
+| `habit.formed` | the observer saw enough evidence (habits/observer.ts) | `habit_id` (`h1`…), `tool`, `context: { slot, previous_tool, mood_band }`, `mechanism` (`reinforcement`, `accident`, `superstition`, `coping`), `strength` | the evidence: the `tool.used` events that formed it |
+| `habit.strengthened` | strength crossed up into a new band (`fragile`, `settled`, `ingrained`) | `habit_id`, `tool`, `from`, `to`, `strength` | the `tool.used` that did it, and the `habit.formed` |
+| `habit.weakened` | strength crossed down | same | the `tool.used` or, for a skipped slot, the `tool.chosen`; and the `habit.formed` |
+| `habit.broken` | strength reached zero: the habit graveyard | `habit_id`, `tool`, `formed_day`, `lived_days`, `reason` (`skipped`, `poor_outcomes`) | as for weakened |
+| `day.reviewed` | each evening, slot 11, after the brain's last step | `kept`, `dropped`, `carried`, `overrides`, `habits_formed`, `habits_broken` | the `plan.made` |
+
+A habit-driven slot shows as `tool.chosen` with `rule: "habit"`. An override shows as `tool.chosen` with `overrode: { intention }` (the brain won) or `overrode: { urge, pressure }` plus `cost` (the mind held, and paid); only the first kind produces a `rationalized` memory.
+
 ### Reserved families
 
 Later issues define these, here and in `EventCatalog`, and nowhere else:
 
 | Family | Layer | Arrives with |
 |---|---|---|
-| `plan.*`, `intention.*`, `habit.*`, `memory.*` | `mind` | M0.3, Walt's mind (#10) |
 | `belief.*` | `self` | M0.5 (self-beliefs) and M4 (the Observer belief) |
 | `director.*` | `director` | the Director |
 
@@ -179,6 +196,30 @@ These are the questions the thesis depends on. A schema change that makes any of
   ```
 
 - **Habit lifetimes.** Pair each `habit.formed` with the `habit.broken` (if any) for the same actor and habit; the gap is the lifetime. The `causes` on the forming event are the tool runs that reinforced it, and on the breaking event what displaced it. Unbroken habits are the ones still running at `run.ended`.
+
+  ```sql
+  SELECT f.actor, f.data.habit_id AS habit, f.data.tool AS tool, f.data.mechanism AS mechanism,
+         f.day AS formed_day, b.day AS broken_day,
+         coalesce(b.data.lived_days, (SELECT max(day) FROM events) - f.day) AS lived_days,
+         b.data.reason AS reason
+  FROM events f
+  LEFT JOIN events b ON b.type = 'habit.broken' AND b.actor = f.actor AND b.data.habit_id = f.data.habit_id
+  WHERE f.type = 'habit.formed'
+  ORDER BY f.actor, f.id;
+  ```
+
+  `broken_day` is NULL for a habit still alive at the end of the run; `lived_days` then counts to the last day. `habit.strengthened` and `habit.weakened` rows for the same `habit_id`, ordered by `id`, are its strength history.
+
+- **What they remember against what happened.** A memory points at its source event through `data.of`. The join is the first of the "two columns": the memories a resident keeps, beside the events as they were logged. A `rationalized` memory of a `tool.chosen` whose `overrode.intention` names the plan the brain overrode is the mind telling itself a story the log contradicts.
+
+  ```sql
+  SELECT m.actor, m.data.memory_id AS memory, m.data.salience AS salience, m.data.distortion AS distortion,
+         e.id AS source, e.type AS what_happened, e.day, e.slot, e.data AS as_logged
+  FROM events m
+  JOIN events e ON e.id = m.data.of
+  WHERE m.type = 'memory.formed'
+  ORDER BY m.actor, m.data.salience DESC, m.id;
+  ```
 
 - **Relationships.** `GROUP BY actor, target` over any family: who talks to whom, who avoids whom, who confides in whom about the Observer. Over time, bucket by `day`. This is the belief map's edge list.
 
