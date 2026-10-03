@@ -1,0 +1,162 @@
+# The event log
+
+The reference to keep open while writing analysis. The log is what almost everything reads: the text you read to judge a week, the diary, the tabloid, the Director, analysis in Python, and eventually the UI's "who made them this way". The decisions behind its shape are in [ADR-0003](decisions/0003-event-log.md); the code is `packages/ingenium/src/events.ts`.
+
+A run produces two kinds of row:
+
+- **Events** record decisions and threshold crossings: something happened, and here is what led to it.
+- **Snapshots** record levels: where every resident's continuous values stood at the end of every slot.
+
+The rule that separates them: **if it's a number that changes every slot, it's a snapshot column. If it's a thing that happened, it's an event.** Hunger rising is a snapshot column; hunger crossing the threshold that produces an urge is an event.
+
+## The envelope
+
+Every event is one flat object. It loads into a DataFrame without reshaping.
+
+```json
+{"id":2,"day":1,"slot":0,"actor":"world","layer":"world","type":"day.started","causes":[1],"data":{"weekday":"Mon"}}
+```
+
+| Key | Type | Meaning |
+|---|---|---|
+| `id` | integer | Sequential per run, from 1. Never a timestamp or UUID, so two runs of one seed compare byte for byte. |
+| `day` | integer | 1-based. |
+| `slot` | integer | 0–11. Each slot is two hours; slot 0 is 00:00–02:00, slot 7 is 14:00–16:00. |
+| `actor` | string | Who did it: a resident ID (`walt`), or `world`, `director`, `observer`. |
+| `target` | string, optional | Who or what it was directed at. Absent when there is no target. Present from day one so relationship analysis is a group-by on `actor` and `target`. |
+| `layer` | string | `world`, `brain`, `mind`, `self`, `director`, `observer`. Which layer of the design produced the event. |
+| `type` | string | A dotted name from the closed vocabulary below. |
+| `causes` | integer list | IDs of earlier events that led to this one. Every cause exists and is lower than `id`; the log refuses anything else. |
+| `data` | object | Typed per `type`. Structured facts only, never prose. |
+
+Serialized key order is fixed: the envelope in the order above, then `data` with its keys alphabetical.
+
+## Conventions
+
+**Events versus snapshots.** Events are sparse and carry causes. Snapshots are dense (one row per resident per slot, always) and carry none. Logging a value change as an event is wrong unless a threshold was crossed or a decision was made. The two together answer different questions: snapshots show *what the week looked like*, events show *why it went that way*.
+
+**Causes.** An event's causes are the events without which it wouldn't have happened, as judged by the code that appends it. An urge cites the need that crossed its threshold; a tool run cites the urge or intention that chose it; a habit forming cites the tool runs that reinforced it. Causes make "why did this happen?" a graph walk (query below). An event with no causes is a root: a run or day boundary, a world event, or an input from outside the sim.
+
+**Actor and target.** `actor` is the one acting, even when the layer is internal: a `brain` event for Walt has `actor: "walt"`. `target` is the other party when there is one: the neighbor called, the Observer theorized about, the object fixed. Residents never appear as `layer`; layers describe the mechanism, actors describe the person.
+
+**Layer.** `world` is the environment and the clock. `brain`, `mind`, and `self` are the three layers of [EngineIdeas.md](EngineIdeas.md). `director` is for whatever the Director does; it acts only through events tagged this way, never by editing state. `observer` is the player's own actions.
+
+**IDs.** Dense and sequential, so `events[id - 1]` is the lookup and a run's event count is its last ID. There is no cross-run identity; a run folder is self-contained.
+
+**Non-deterministic inputs** (LLM output, player actions; Milestone 0 has neither) enter the sim as recorded events through the same `append` as everything else, so a run folder holds everything needed to replay it without regenerating them.
+
+**Time in `data`.** Events already carry `day` and `slot`; `data` holds durations and references, not timestamps.
+
+## Event types
+
+The vocabulary is a TypeScript discriminated union (`EventCatalog` in `events.ts`), so an unknown type is a compile error in the engine, and the renderer falls back to showing type and data for anything it doesn't recognise so a new type is never invisible.
+
+### Run and day boundaries (M0.1)
+
+All four have `actor: "world"` and `layer: "world"`.
+
+| Type | When | `data` | Causes |
+|---|---|---|---|
+| `run.started` | once, at day 1 slot 0 | `seed` (number or string), `days`, `residents` (IDs, in loop order), `start_weekday` | none |
+| `day.started` | each day, slot 0, before dawn hooks | `weekday` | the previous `day.ended`, or `run.started` on day 1 |
+| `day.ended` | each day, slot 11, after evening hooks | `weekday` | that day's `day.started` |
+| `run.ended` | once, at the last day's slot 11 | `days`, `slots` (days × 12) | the last `day.ended` |
+
+### Reserved families
+
+Later issues define these, here and in `EventCatalog`, and nowhere else:
+
+| Family | Layer | Arrives with |
+|---|---|---|
+| `need.*`, `mood.*`, `urge.*`, `tool.*`, `willpower.*` | `brain` | M0.2, Walt's brain (#9) |
+| `plan.*`, `intention.*`, `habit.*`, `memory.*` | `mind` | M0.3, Walt's mind (#10) |
+| `belief.*` | `self` | M0.5 (self-beliefs) and M4 (the Observer belief) |
+| `director.*` | `director` | the Director |
+
+## Snapshots
+
+One row per resident per slot, recorded after every resident has stepped:
+
+```json
+{"day":1,"slot":7,"actor":"walt","energy":0.62,"hunger":0.41}
+```
+
+`day`, `slot`, and `actor` are the key; every other column is a number. Columns arrive with the layers that own them (M0.2 adds needs, mood, and willpower). In M0.1 a row holds only the key. Serialized key order is the key, then columns alphabetical.
+
+## The run folder
+
+`pnpm sim --out` writes one (default `runs/seed-<seed>/`, gitignored):
+
+```
+run.json          seed, days, engine_version, schema_version, residents, config
+events.jsonl      one event per line
+snapshots.jsonl   one row per resident per slot
+```
+
+No file holds a wall-clock value, so a folder is fully reproducible from its seed and the engine version. `schema_version` bumps when the envelope or an existing type's `data` changes shape.
+
+## Analysis quickstart
+
+### pandas
+
+```python
+import pandas as pd
+
+run = "runs/seed-1"
+events = pd.read_json(f"{run}/events.jsonl", lines=True)
+snapshots = pd.read_json(f"{run}/snapshots.jsonl", lines=True)
+
+# data is a column of dicts; flatten it when you need its fields
+events = events.join(pd.json_normalize(events["data"]).add_prefix("data."))
+
+events[["id", "day", "slot", "actor", "type"]].head()
+snapshots.groupby(["day", "slot"]).mean(numeric_only=True)
+```
+
+### DuckDB
+
+```sql
+CREATE TABLE events    AS SELECT * FROM read_json_auto('runs/seed-1/events.jsonl');
+CREATE TABLE snapshots AS SELECT * FROM read_json_auto('runs/seed-1/snapshots.jsonl');
+
+SELECT type, count(*) FROM events GROUP BY type ORDER BY 2 DESC;
+SELECT day, slot, actor, data.weekday FROM events WHERE type = 'day.started';
+```
+
+`data` loads as a struct, so its fields are `data.field`. `causes` loads as a list of integers.
+
+### "Why did this happen?"
+
+Walk `causes` back from one event to its roots:
+
+```sql
+WITH RECURSIVE why AS (
+  SELECT id, day, slot, actor, type, causes, 0 AS depth
+  FROM events WHERE id = 16
+  UNION ALL
+  SELECT e.id, e.day, e.slot, e.actor, e.type, e.causes, why.depth + 1
+  FROM why, unnest(why.causes) AS c(cause)
+  JOIN events e ON e.id = c.cause
+)
+SELECT depth, id, day, slot, actor, type FROM why ORDER BY depth, id;
+```
+
+Depth 0 is the event itself, depth 1 its direct causes, and so on. The same query with the join reversed (`e.causes` containing `why.id`) answers "what did this lead to?".
+
+## Analyses the schema must keep easy
+
+These are the questions the thesis depends on. A schema change that makes any of them harder is the wrong change.
+
+- **The Observer belief over time.** Per resident, `belief.*` events with `target = 'observer'`, ordered by `id`: stance and confidence at each change, and the events each change cites or discounts. Plus the matching columns in `snapshots` for the level between changes.
+
+  ```sql
+  SELECT actor, day, slot, type, data
+  FROM events WHERE type LIKE 'belief.%' AND target = 'observer'
+  ORDER BY actor, id;
+  ```
+
+- **Habit lifetimes.** Pair each `habit.formed` with the `habit.broken` (if any) for the same actor and habit; the gap is the lifetime. The `causes` on the forming event are the tool runs that reinforced it, and on the breaking event what displaced it. Unbroken habits are the ones still running at `run.ended`.
+
+- **Relationships.** `GROUP BY actor, target` over any family: who talks to whom, who avoids whom, who confides in whom about the Observer. Over time, bucket by `day`. This is the belief map's edge list.
+
+The exact `data` fields for `belief.*` and `habit.*` are defined when those families arrive; the envelope already carries what these queries group and order by.

@@ -11,8 +11,12 @@ How this repository is built and why. Read it with [AGENTS.md](../AGENTS.md), wh
 
 ```
 apps/web/              Next.js shell: the title card and /api/health. Dockerfile for orchid.
+apps/sim/              The command-line runner, `pnpm sim`. All of the engine's I/O lives here.
 packages/ingenium/     The engine. Pure TypeScript, zero runtime dependencies, fenced by lint.
+runs/                  Run folders written by `pnpm sim --out`. Gitignored; reproducible from their seed.
 docs/TechnicalGuide.md This file.
+docs/event-log.md      The event log reference: envelope, conventions, every type, analysis quickstart.
+docs/EngineIdeas.md    The engine's design tenets.
 docs/decisions/        Architecture decision records (ADRs).
 compose.yaml           The container as it runs on orchid.
 deploy/                The deploy watcher for orchid: autodeploy.sh and its systemd unit.
@@ -25,7 +29,25 @@ Every workspace package lives under `apps/*` or `packages/*` (`pnpm-workspace.ya
 
 `packages/ingenium` is a **source-only** package. Its `exports` points at `src/index.ts`, and it has no build step. Each consumer compiles it: Turbopack transpiles workspace packages automatically, and Vitest and Node's type stripping run the source directly. For that reason the engine uses only erasable TypeScript syntax (`erasableSyntaxOnly`) and writes relative imports with their `.ts` extension (`allowImportingTsExtensions`).
 
-The package has **no `dependencies` field**. Today it exports identity only, `ENGINE_NAME` and `ENGINE_VERSION`. A sibling test keeps `ENGINE_VERSION` equal to `package.json`'s `version`.
+The package has **no `dependencies` field**. A sibling test keeps `ENGINE_VERSION` equal to `package.json`'s `version`.
+
+### Modules
+
+Everything is exported from `src/index.ts`. Each module has a `*.test.ts` beside it.
+
+| Module | Holds |
+|---|---|
+| `version.ts` | `ENGINE_NAME`, `ENGINE_VERSION`. |
+| `rng.ts` | Seeded random streams. `streams(seed).get(name)` returns an independent stream per name, so a draw from `"impulse"` never shifts `"habit"`. sfc32 seeded through the cyrb128 string hash of `seed + name`, with 12 warm-up draws. Helpers: `float()` in [0, 1), `int(min, max)` inclusive, `chance(p)`, `pick(items)`, `weighted(items, weightOf)`. A known-answer test pins the first values for seed 1, so an algorithm change can't slip in. |
+| `clock.ts` | Sim time is `{ day, slot }`: days from 1, twelve two-hour slots a day, slot 0 at 00:00. The weekday comes from a configurable start (default Monday). `nextSlot`, `compareTime`, `slotIndex`, `weekdayOf`, `timeLabel` (`Mon 14:00`). |
+| `events.ts` | The event envelope, the `EventCatalog` union of types, the `EventLog` (append assigns sequential IDs and refuses a cause that doesn't exist yet), and snapshot rows. `SCHEMA_VERSION` is the contract with analysis code. The reference is [docs/event-log.md](event-log.md); the decisions are ADR-0003. |
+| `run.ts` | `runSim({ seed, days, residents?, hooks?, startWeekday? })` returns `{ meta, events, snapshots }` and does no I/O. Three phases a day, each with a hook: `dawn` (slot 0), `step` (per resident per slot, in resident order), `evening` (slot 11). A fourth hook, `snapshot`, supplies each resident's numeric levels at the end of every slot; the loop records the row whether or not the hook exists. Hooks see a `SimContext`: the clock, the log (append with causes, read back for cause lookup), and the named streams. `WALT` (`walt`, Recluse) is the default resident. `meta` is `run.json`'s exact shape (`seed, days, engine_version, schema_version, residents, config`). |
+| `render.ts` | `renderEvent(event, { startWeekday })` gives one line, `Mon 08:00  walt      …`, from a per-type renderer. An unknown type falls back to the type and its data, so a new type is never invisible. Prose is never stored. |
+| `jsonl.ts` | `stableJson` (named keys first, the rest alphabetical, nested keys alphabetical) and `toJsonl`. `eventsToJsonl` and `snapshotsToJsonl` apply the envelope's key order. A test runs one seed twice and asserts byte-identical output. |
+
+The brain (#9) and the mind (#10) plug into the loop's hooks. **Every non-deterministic input** to a run (LLM output, player actions; Milestone 0 has neither) is appended as a recorded event through the same path, and the hooks object is where a replay substitutes recorded events for a model call.
+
+### The fence
 
 `packages/ingenium/eslint.config.js` enforces the epic's principles mechanically. Its rules cover non-test source under `src/`:
 
@@ -61,6 +83,7 @@ Loosening any of these is an architectural decision, so write an ADR first.
 | Command (repo root) | Does |
 |---|---|
 | `pnpm dev` | `next dev` for the web shell on :3000 |
+| `pnpm sim` | runs a seed through the engine and prints the rendered log (§ The sim runner) |
 | `pnpm build` | every package's `build` (today, the web shell) |
 | `pnpm typecheck` | `tsc --noEmit` per package (web runs `next typegen` first, which generates the `LayoutProps`/`PageProps` route types) |
 | `pnpm lint` | ESLint per package, with each package's own flat config |
@@ -69,7 +92,21 @@ Loosening any of these is an architectural decision, so write an ADR first.
 - **pnpm 11 and Node 24 LTS.** Versions are pinned by `packageManager`, `engines`, and `.nvmrc`. Dependency build scripts stay off (`allowBuilds` in `pnpm-workspace.yaml`).
 - **TypeScript 5.9** comes from `tsconfig.base.json`: strict, plus `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `erasableSyntaxOnly`, and `allowImportingTsExtensions`. The web config overrides `module`/`moduleResolution`/`jsx` for the bundler. It stays on 5.9 because typescript-eslint supports TypeScript below 6.1 only, and Next's template pins 5.
 - **ESLint 9**, even though 9 is end-of-life. eslint-config-next 16.3 pulls in `eslint-plugin-import`, `eslint-plugin-jsx-a11y`, and `eslint-plugin-react`, and all three cap their peer dependency at ESLint 9. Move both packages to ESLint 10 together once Next's config supports it.
-- **Tests** are Vitest 5, sitting beside the source as `*.test.ts`. The root config's `projects` is `packages/*`; add `apps/*` when the web shell gets its first test. What gets tested follows AGENTS.md § Tests.
+- **Tests** are Vitest 5, sitting beside the source as `*.test.ts`. The root config's `projects` is `packages/*`; add `apps/*` when an app gets its first test (`apps/sim` is I/O only and has none). What gets tested follows AGENTS.md § Tests.
+
+### The sim runner (`apps/sim`)
+
+`pnpm sim` is `node apps/sim/src/main.ts`, run from the repo root so `runs/` lands there. Node 24 runs the TypeScript directly (type stripping), with no build and no `tsx`: the bare import `ingenium` resolves through the workspace symlink to `packages/ingenium/src/index.ts`, and because Node resolves to the real path, which is outside any `node_modules`, stripping applies to the engine's files too. Arguments come from `node:util`'s `parseArgs`; the package has no dependencies beyond the engine. `pnpm lint` and `pnpm typecheck` cover it like any other package.
+
+| Invocation | Does |
+|---|---|
+| `pnpm sim` | Walt's week (`--seed 1 --days 7`), one rendered line per event |
+| `pnpm sim --seed <n or string> --days <n>` | another seed or length. A numeric seed is a number, anything else a string |
+| `pnpm sim --json` | the events as JSONL on stdout instead |
+| `pnpm sim --out` | writes a run folder to `runs/seed-<seed>/` (gitignored) and prints a one-line summary on stderr |
+| `pnpm sim --out <dir>` | the same, somewhere else |
+
+A run folder is `run.json` (the engine's `meta`), `events.jsonl`, and `snapshots.jsonl`, with fixed key order and no wall-clock values, so two runs of a seed are byte-identical. [docs/event-log.md](event-log.md) has the schema and the pandas and DuckDB quickstart.
 - **CI** (`.github/workflows/ci.yml`):
   - The **Tests** job runs `install --frozen-lockfile`, `typecheck`, `lint`, `test`, and `shellcheck deploy/*.sh` on every PR and every push to main.
   - `.gitattributes` keeps `*.sh` and `*.service` files LF-terminated, even in a Windows checkout.
@@ -220,6 +257,12 @@ ADRs in [`docs/decisions/`](decisions/) record the larger decisions. This table 
 |---|---|---|
 | pnpm monorepo, engine as its own package | single Next app with an `engine/` folder | The engine must stay headless and testable on its own; a package boundary plus the lint fence makes that mechanical (ADR-0001) |
 | Engine is source-only, no build step | compile to `dist/` | Every consumer (Turbopack, Vitest, Node type stripping) already compiles TS; a build step adds a watch process and stale-output bugs for nothing |
+| Structured events with cause links, prose rendered from them (ADR-0003) | prose log entries, as in LCP2 | Strings can't be grouped, joined, or walked; the thesis needs "why?" to be a query |
+| Events for decisions and threshold crossings, snapshots for levels (ADR-0003) | log every value change as an event | Noise buries the decisions and makes `causes` meaningless; levels are a time series, behaviour is a graph |
+| Sequential integer event IDs (ADR-0003) | timestamps or UUIDs | Two runs of one seed must compare byte for byte; no cross-run identity is needed |
+| Engine holds state, log records every mutation's cause and effect (ADR-0003) | full event sourcing | Forces every piece of state through an event schema before the state is designed; nothing planned needs it |
+| JSONL run folders with fixed key order (ADR-0003) | a database from day one | Loads into pandas or DuckDB in one line and maps one-to-one onto the SQLite tables M7 adds |
+| `apps/sim` runs the TypeScript under Node's type stripping | `tsx`, or a build step | Node 24 strips types for files outside `node_modules`, and the workspace symlink resolves to the real path; no dependency needed |
 | Docker on orchid behind Caddy | Vercel | The epic's later milestones need a LAN Ollama and SQLite on a volume; the house box has both and already runs the front door (ADR-0001) |
 | Public GHCR image | private package plus a registry token on orchid | The source is public and the image holds nothing secret |
 | A pull watcher on orchid deploys CI's SHA-tagged image, with a health check and rollback (ADR-0002) | Watchtower; GitHub Actions over SSH; a self-hosted runner; a webhook receiver | Watchtower is archived (December 2025) and needs the Docker socket, which is root on the box that runs the house DNS. Actions over SSH needs a Tailscale key stored in GitHub and ACL changes. A self-hosted runner would run a public repo's workflow code on the box. A webhook needs a second public door. A 60 s outbound poll needs none of these |
