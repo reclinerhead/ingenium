@@ -16,7 +16,7 @@
  * when the strongest urge is `rest` is a fight, because the hobby satisfies
  * no `rest` at all.
  *
- * ## The five tools of Milestone 0
+ * ## The tools of Milestone 0
  *
  * | Tool              | Satisfies            | Condition            |
  * |-------------------|----------------------|----------------------|
@@ -25,6 +25,7 @@
  * | `listen_to_music` | rest, withdraw       |                      |
  * | `pursue_hobby`    | express, fix         | not exhausted        |
  * | `reflect`         | withdraw             | unsettled            |
+ * | `take_a_walk`     | express (weakly)     | not tired            |
  *
  * Effects may depend on state. Eating when not hungry satisfies less; the
  * same meal that fixes a real hunger barely registers after a snack.
@@ -38,7 +39,9 @@
 import { type BrainState, type Level, LEVELS, type Needs, clamp, clamp01, levelOf, round4 } from "../brain/state.ts";
 import type { Urge } from "../brain/urges.ts";
 
-export const TOOL_IDS = ["eat", "sleep", "listen_to_music", "pursue_hobby", "reflect"] as const;
+// `take_a_walk` is appended at the end so every catalog-order tie-break
+// among the first five is unchanged.
+export const TOOL_IDS = ["eat", "sleep", "listen_to_music", "pursue_hobby", "reflect", "take_a_walk"] as const;
 export type ToolId = (typeof TOOL_IDS)[number];
 
 /**
@@ -136,6 +139,35 @@ export const TOOLS: Readonly<Record<ToolId, Tool>> = {
       mood: s.mood < 0 ? Math.min(0.1, -s.mood) : 0,
       needs: { boredom: 0.05 },
     }),
+  },
+
+  take_a_walk: {
+    id: "take_a_walk",
+    // A weak answer to boredom, and deliberately weaker than the workbench:
+    // the urge rule never reaches for a walk while the hobby is available,
+    // and the hobby is available whenever the walk is. So a walk only
+    // happens because he planned one, on a whim, or out of habit. A Recluse
+    // doesn't crave the street; he sometimes makes himself go.
+    satisfies: { express: 0.5 },
+    // He won't go out tired. Stricter than the hobby's gate, which keeps
+    // the walk off the urge path even when the workbench is out of reach.
+    available: (s) => s.needs.fatigue < 0.7,
+    effects: (s) => {
+      // How shut-in he has been: nothing until loneliness reaches the `low`
+      // band, 1 when it is maxed. A walk after a normal day is pleasant.
+      // A walk after a week indoors, a nod from a neighbour, is the best
+      // hour he's had: the one strong outcome that can form an `accident`
+      // habit (habits/observer.ts). See the table in catalog.test.ts.
+      const shutIn = clamp01((s.needs.loneliness - 0.4) / 0.6);
+      return {
+        // Seeing the street takes the edge off loneliness without answering
+        // `approach`: nobody was called, nothing was asked. That urge stays
+        // unmet on purpose.
+        needs: { boredom: -0.3, loneliness: -0.15, fatigue: 0.1 },
+        mood: 0.1 + 0.25 * shutIn,
+        arousal: -0.1,
+      };
+    },
   },
 };
 

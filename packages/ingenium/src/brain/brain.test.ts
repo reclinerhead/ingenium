@@ -81,13 +81,19 @@ describe("brainHooks on the loop", () => {
     // Once loneliness is urgent, drift's pressure term drags mood down every
     // slot. The mood band crossing that follows must point back at the
     // loneliness crossing, or "why did his mood drop?" answers "nothing".
-    const lonely = week.events.find((e) => e.type === "need.crossed" && e.data.need === "loneliness" && e.data.to === "urgent")!;
-    const drop = week.events.find((e) => e.type === "mood.shifted" && e.data.to === "low" && e.id > lonely.id);
+    // Ten days, not the week: a whim to walk (#16) lifts his mood and
+    // shaves loneliness, and with this seed that holds the drop off until
+    // day 10. The drop still comes, and it still cites the crossing.
+    const run = runSim({ seed: 1, days: 10, hooks: brainHooks() });
+    const lonely = run.events.find((e) => e.type === "need.crossed" && e.data.need === "loneliness" && e.data.to === "urgent")!;
+    const drop = run.events.find((e) => e.type === "mood.shifted" && e.data.to === "low" && e.id > lonely.id);
     expect(drop).toBeDefined();
     expect(drop!.causes).toContain(lonely.id);
-    // And the chain continues: the urgent crossing cites the low one.
-    const earlier = week.events.find((e) => e.type === "need.crossed" && e.data.need === "loneliness" && e.data.to === "low")!;
-    expect(lonely.causes).toContain(earlier.id);
+    // And the chain continues: the urgent crossing cites the low one. The
+    // latest low crossing before it, since a walk can take loneliness back
+    // to ok for a day and the climb into low then happens again.
+    const lows = run.events.filter((e) => e.type === "need.crossed" && e.data.need === "loneliness" && e.data.to === "low" && e.id < lonely.id);
+    expect(lonely.causes).toContain(lows.at(-1)!.id);
   });
 
   it("leaves a mood shift with no pressing need citing only its predecessor", () => {

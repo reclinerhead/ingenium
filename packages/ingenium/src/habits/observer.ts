@@ -120,8 +120,9 @@ export function outcomeOf(changes: Changes): number {
  * Outcome thresholds and evidence counts. "Good" is set so that the
  * ordinary satisfactions count: a meal when hungry (about 0.15), a night's
  * sleep (about 0.11), an hour at the workbench (0.3). "Strong" is out of
- * reach of every M0 tool on purpose: accident waits for a tool that can
- * delight, and until one exists it stays dormant.
+ * reach of every M0 tool but one: accident waits for a tool that can
+ * delight, and only `take_a_walk` does, after loneliness passes about 0.85
+ * (tools/catalog.ts). A walk on an ordinary day is merely good.
  */
 export const GOOD_OUTCOME = 0.1;
 export const STRONG_OUTCOME = 0.4;

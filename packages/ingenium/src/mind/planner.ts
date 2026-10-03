@@ -20,9 +20,9 @@
  *    again, kept at its priority, in a window that fits the tool.
  * 3. **New intentions**, drawn by affinity until the day has `density` of
  *    them (counting the carried ones), each in a window the tool suits:
- *    meals morning or evening, the workbench in daylight, records and
- *    reflection in the evening. The window shrinks around any slot a habit
- *    already claims.
+ *    meals morning or evening, the workbench in daylight, walks in
+ *    daylight, records and reflection in the evening. The window shrinks
+ *    around any slot a habit already claims.
  *
  * The plan is deliberately plain. The interesting part of M0.3 is what
  * happens when the brain disagrees with it.
@@ -56,6 +56,10 @@ export const TOOL_WINDOWS: Readonly<Record<ToolId, readonly { from: number; to: 
   reflect: [
     { from: 10, to: 11 }, // late evening, 20:00–00:00
     { from: 4, to: 5 }, // first thing, 08:00–12:00
+  ],
+  take_a_walk: [
+    { from: 4, to: 5 }, // morning, 08:00–12:00
+    { from: 7, to: 8 }, // afternoon, 14:00–18:00
   ],
   sleep: [], // never planned
 };

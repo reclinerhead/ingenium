@@ -28,9 +28,9 @@ export const RECLUSE_BRAIN: BrainDials = {
     // boredom is what drives him to his hobby.
     boredom: 0.08,
     // Slow. Alone for a week, loneliness reaches `low` on day 3 and
-    // `urgent` on day 5, and nothing in M0 brings it down. For a Recluse
-    // that is the right speed: he doesn't notice at first, and when he does
-    // there is no one to call.
+    // `urgent` on day 5, and only a walk brings it down (by about a day's
+    // worth). For a Recluse that is the right speed: he doesn't notice at
+    // first, and when he does there is no one to call.
     loneliness: 0.012,
   },
   willpower: {
@@ -54,6 +54,13 @@ export const RECLUSE_MIND: MindWeights = {
     listen_to_music: 0.6,
     // He means to reflect more than he does.
     reflect: 0.4,
+    // He means to get out more than he does, but not by much. Planned on
+    // about one day in six, at priority 1: rare enough that the walk
+    // usually lands on a Walt who is already shut in, which is when it is
+    // worth something. Each walk undoes about a day of loneliness's climb,
+    // so at 0.3 three walks a week kept him out of the urgent band
+    // entirely and the weekend lost its fight.
+    take_a_walk: 0.15,
     // Meals are planned, but as punctuation, not as the point.
     eat: 0.5,
     // The body schedules sleep.

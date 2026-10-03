@@ -14,15 +14,15 @@
  * during Walt's week; when it does, it goes here, and the catalog tags the
  * tools that answer it.
  *
- * | Urge       | Fed by                                  | M0 tool            |
- * |------------|-----------------------------------------|--------------------|
- * | `consume`  | hunger                                  | eat                |
- * | `rest`     | fatigue                                 | sleep, music       |
- * | `express`  | boredom                                 | pursue_hobby       |
- * | `fix`      | boredom, a bad mood                     | pursue_hobby       |
- * | `approach` | loneliness                              | none in M0         |
- * | `withdraw` | arousal, a bad mood                     | reflect, music     |
- * | `flee`     | very high arousal with a bad mood       | none in M0         |
+ * | Urge       | Fed by                                  | M0 tool                           |
+ * |------------|-----------------------------------------|-----------------------------------|
+ * | `consume`  | hunger                                  | eat                               |
+ * | `rest`     | fatigue                                 | sleep, music                      |
+ * | `express`  | boredom                                 | pursue_hobby, take_a_walk (weakly)|
+ * | `fix`      | boredom, a bad mood                     | pursue_hobby                      |
+ * | `approach` | loneliness                              | none in M0                        |
+ * | `withdraw` | arousal, a bad mood                     | reflect, music                    |
+ * | `flee`     | very high arousal with a bad mood       | none in M0                        |
  *
  * `approach` with no tool is deliberate: a Recluse's loneliness has nowhere
  * to go, and `urge.unmet` is the event that says so. That gap is a story,
