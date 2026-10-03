@@ -29,6 +29,10 @@ pnpm dev
 
 `pnpm dev` serves the shell at http://localhost:3000. The checks CI runs are `pnpm typecheck`, `pnpm lint`, and `pnpm test`.
 
+## Where it runs
+
+The shell runs as a container on orchid, the house server, at `https://ingenia.lan`. It's reachable on the LAN and tailnet only. Merging to main is the deploy: a few minutes after CI passes, a watcher on orchid runs that commit's image. If the new container fails its health check, the watcher rolls it back. The details are in the [Technical Guide § 6](docs/TechnicalGuide.md#6-deployment-on-orchid).
+
 ## License
 
 [MIT](LICENSE)
