@@ -44,8 +44,54 @@ Everything is exported from `src/index.ts`. Each module has a `*.test.ts` beside
 | `run.ts` | `runSim({ seed, days, residents?, hooks?, startWeekday? })` returns `{ meta, events, snapshots }` and does no I/O. Three phases a day, each with a hook: `dawn` (slot 0), `step` (per resident per slot, in resident order), `evening` (slot 11). A fourth hook, `snapshot`, supplies each resident's numeric levels at the end of every slot; the loop records the row whether or not the hook exists. Hooks see a `SimContext`: the clock, the log (append with causes, read back for cause lookup), and the named streams. `WALT` (`walt`, Recluse) is the default resident. `meta` is `run.json`'s exact shape (`seed, days, engine_version, schema_version, residents, config`). |
 | `render.ts` | `renderEvent(event, { startWeekday })` gives one line, `Mon 08:00  walt      …`, from a per-type renderer. An unknown type falls back to the type and its data, so a new type is never invisible. Prose is never stored. |
 | `jsonl.ts` | `stableJson` (named keys first, the rest alphabetical, nested keys alphabetical) and `toJsonl`. `eventsToJsonl` and `snapshotsToJsonl` apply the envelope's key order. A test runs one seed twice and asserts byte-identical output. |
+| `brain/` | The fast layer: `state.ts` (needs, mood, arousal, willpower), `dials.ts` (the archetype's numbers), `drift.ts` (per-slot change when nothing is done), `bands.ts` (thresholds with hysteresis), `urges.ts` (state to ranked urge pressures), `scheduler.ts` (one tool per slot by an ordered set of rules, and willpower), `brain.ts` (all of it as `SimHooks`). § The brain, below. |
+| `tools/catalog.ts` | The five tools, each tagged with the urges it satisfies, with state-dependent effects and conditions. `applyTool` is the one place brain state changes other than drift. |
+| `archetypes/` | One file per archetype holding its dials (`recluse.ts` today), and `brainDialsFor(archetype)`. |
 
-The brain (#9) and the mind (#10) plug into the loop's hooks. **Every non-deterministic input** to a run (LLM output, player actions; Milestone 0 has neither) is appended as a recorded event through the same path, and the hooks object is where a replay substitutes recorded events for a model call.
+The mind (#10) plugs into the loop's hooks beside the brain. The loop's default is no hooks; `apps/sim` passes `brainHooks()`, and M0.3 composes the mind's hooks in the same place. **Every non-deterministic input** to a run (LLM output, player actions; Milestone 0 has neither) is appended as a recorded event through the same path, and the hooks object is where a replay substitutes recorded events for a model call.
+
+### The brain
+
+The fast layer of [EngineIdeas.md](EngineIdeas.md): runs every slot, fully deterministic, never touched by the LLM, never explains itself (the why is in event causes). Walt's week under the brain alone is what `pnpm sim` shows today.
+
+**State** (`brain/state.ts`), all on fixed scales so dials and thresholds compare across archetypes: four **needs** (`hunger`, `fatigue`, `boredom`, `loneliness`), 0..1, higher is more pressing; **mood**, -1..1; **arousal**, 0..1; **willpower**, 0..1. All seven are snapshot columns every slot. Walt starts at midnight tired enough to go straight to bed (`INITIAL_BRAIN_STATE`).
+
+**Drift** (`brain/drift.ts`), once per slot before the scheduler: needs climb at the archetype's rates; fatigue's rate is scaled by a cosine over the day, 1.5× at 04:00 and 0.5× at 16:00. Mood keeps 80% of itself per slot. Arousal relaxes a quarter of the way to its baseline of 0.3. Any need above 0.75 drags mood down and pushes arousal up in proportion. Willpower trickles back at the refill rate, up to double in a good mood, never slower in a bad one.
+
+**Bands** (`brain/bands.ts`) turn levels into events. Needs: `ok` → `low` at 0.4 (back below 0.3) → `urgent` at 0.75 (back below 0.65). Mood: `neutral` → `high` at 0.4 (back below 0.25), → `low` at -0.4 (back above -0.25). The gap between entry and exit is the hysteresis; a value hovering at a threshold can't flap. Bands are state the loop carries per resident, re-evaluated after drift and again after the tool so each crossing cites the right cause.
+
+**Urges** (`brain/urges.ts`), the brain's output, recomputed from state every slot and ranked: `consume` ← hunger, `rest` ← fatigue gated by the hour, `express` ← boredom, `fix` ← boredom and a bad mood, `approach` ← loneliness, `withdraw` ← arousal and a bad mood, `flee` ← very high arousal with a bad mood. The floor is 0.35: below it an urge isn't acted on. The vocabulary is provisional; the eighth primitive is expected to show itself in Walt's week.
+
+The `rest` gate is the circadian half of Borbély's two-process model: sleep pressure is fatigue (homeostatic) times openness to sleep (circadian, the same cosine as fatigue's drift, rescaled to top out at 1). Without the gate a resident naps whenever fatigue clears the floor; with it the same fatigue is three times as compelling at 04:00 as at 16:00, and sleep consolidates at night with no rule saying so. Across 20 seeds, 88% of Walt's sleep falls between 22:00 and 08:00 (a test holds it above 75%).
+
+**The catalog** (`tools/catalog.ts`). Tools are organized by the urge they satisfy (decided 2026-10-03), so the brain finds a tool without knowing any by name:
+
+| Tool | Satisfies (weight) | Condition | Effects, per slot |
+|---|---|---|---|
+| `eat` | consume 1 | | hunger −min(hunger, 0.5), boredom −0.05, mood +0.1 × hunger. Eating when not hungry satisfies less. |
+| `sleep` | rest 1 | | fatigue −0.2, willpower +0.15, arousal −0.15, mood +0.03; also boredom −0.08 and hunger −0.035 (asleep, nobody is bored and the body burns slowly), without which he wakes at 02:00 for a snack |
+| `listen_to_music` | rest 0.4, withdraw 0.6 | | boredom −0.25, fatigue −0.05, mood +0.15, arousal −0.15 |
+| `pursue_hobby` | express 0.7, fix 0.6 | fatigue < 0.85 | boredom −0.4, fatigue +0.05, mood +0.2, arousal +0.1 |
+| `reflect` | withdraw 0.8 | arousal ≥ 0.5 or mood ≤ −0.25 | arousal −0.3, a bad mood toward neutral by up to 0.1, boredom +0.05. Calms in M0; feeds the self-model later |
+
+Weights rank tools *within* an urge (`bestToolFor`); ties break in catalog order. `reflect`'s condition is what keeps it from answering every mild `withdraw`: calm, Walt puts a record on; unsettled, he broods. `applyTool` clamps and reports the realized change per level, and `tool.used` records that, not the requested effect.
+
+**The scheduler** (`brain/scheduler.ts`), pure, once per resident per slot. Its rules in order:
+
+1. **need override**: any need in `urgent`, most pressing first. The body wins. An urgent need with no tool (loneliness) is noted as unmet and skipped.
+2. **due habit**: supplied by the mind (M0.3); empty today.
+3. **intention**: supplied by the mind (M0.3); empty today, and tests supply synthetic ones.
+4. **impulse**: `chance(impulsivity)` on the `impulse` stream, then a uniform pick among available tools. Drawn only when reached.
+5. **urge**: the strongest urge at or above the floor that has a tool, answered by its best tool. Urges above the floor with no tool are noted as unmet on the way.
+6. **idle**.
+
+Rule 5 refines the epic's order, which went from impulse straight to idle. Under the tenets the brain's urges are its normal output; without the rule Walt would sit idle until a need went urgent, then lurch. (#9 asks for this to be accepted or rejected in review.)
+
+**Willpower** is the bridge between mind and brain. When an intention points one way and the strongest actionable urge another, following the intention costs `gap / depth`, where the gap is the urge's pressure minus the strongest pressure among the urges the intended tool answers at all, and `depth` is the archetype's dial. The catalog weights don't enter the gap: they rank tools within an urge, while the fight is between urges, so an intention to pursue the hobby when boredom is the top urge is free even though the hobby answers `express` at 0.7. When the bar can't cover the cost, the urge wins: `willpower.depleted` is logged and `tool.chosen` records `rule: "urge"` with `overrode: { intention }`. Impulse is skipped on that path; someone who just lost a fight with themselves isn't being whimsical. M0.3 adds the rationalization that follows.
+
+**One slot**, in `brain/brain.ts`: drift → crossings (citing the previous crossing of the same level) → urges → decide → `urge.unmet` on the rising edge only → `willpower.depleted` or the deduction → `tool.chosen` (citing the crossings behind the urge) → `tool.used` (citing the decision) → crossings again (citing the tool). The snapshot hook then reports the levels as they stand.
+
+**Walt's dials** (`archetypes/recluse.ts`): drift per slot hunger 0.07, fatigue 0.06 (before the time-of-day scaling), boredom 0.08, loneliness 0.012; willpower depth 1.5, refill 0.02; impulsivity 0.08. Nothing in M0 lowers loneliness, so it reaches `low` on day 3 and `urgent` on day 5, after which the pressure on mood and arousal makes his weekend restless. These are first guesses; reading his week is M0's exit criterion, and they will move.
 
 ### The fence
 
@@ -263,6 +309,11 @@ ADRs in [`docs/decisions/`](decisions/) record the larger decisions. This table 
 | Engine holds state, log records every mutation's cause and effect (ADR-0003) | full event sourcing | Forces every piece of state through an event schema before the state is designed; nothing planned needs it |
 | JSONL run folders with fixed key order (ADR-0003) | a database from day one | Loads into pandas or DuckDB in one line and maps one-to-one onto the SQLite tables M7 adds |
 | `apps/sim` runs the TypeScript under Node's type stripping | `tsx`, or a build step | Node 24 strips types for files outside `node_modules`, and the workspace symlink resolves to the real path; no dependency needed |
+| Tools organized by the urge they satisfy | tools chosen by name, or by the need they reduce | The brain never learns a tool's name; the mind only chooses *which* satisfaction. Decided 2026-10-03 |
+| Sleep is an ordinary tool, with sleep pressure gated by the hour (two-process model) | a night schedule, or a `sleep` rule | Insomnia and oversleeping can emerge; the gate alone puts 88% of Walt's sleep at night |
+| The scheduler acts on the strongest urge above a floor (rule 5) | the epic's order, impulse straight to idle | The brain's urges are its normal output; without the rule a resident idles until a crisis |
+| The willpower gap compares urge pressures, not catalog weights | gap from pressure × weight | Weights rank tools within an urge; the fight is between urges. An intention that answers the top urge at all is free |
+| The loop's default hooks stay empty; the CLI passes `brainHooks()` | `runSim` defaults to the brain | The loop is the loop; what runs on it is the caller's choice, and M0.3 composes brain and mind in the same place |
 | Docker on orchid behind Caddy | Vercel | The epic's later milestones need a LAN Ollama and SQLite on a volume; the house box has both and already runs the front door (ADR-0001) |
 | Public GHCR image | private package plus a registry token on orchid | The source is public and the image holds nothing secret |
 | A pull watcher on orchid deploys CI's SHA-tagged image, with a health check and rollback (ADR-0002) | Watchtower; GitHub Actions over SSH; a self-hosted runner; a webhook receiver | Watchtower is archived (December 2025) and needs the Docker socket, which is root on the box that runs the house DNS. Actions over SSH needs a Tailscale key stored in GitHub and ACL changes. A self-hosted runner would run a public repo's workflow code on the box. A webhook needs a second public door. A 60 s outbound poll needs none of these |

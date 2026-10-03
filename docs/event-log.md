@@ -62,13 +62,27 @@ All four have `actor: "world"` and `layer: "world"`.
 | `day.ended` | each day, slot 11, after evening hooks | `weekday` | that day's `day.started` |
 | `run.ended` | once, at the last day's slot 11 | `days`, `slots` (days × 12) | the last `day.ended` |
 
+### The brain (M0.2)
+
+All with `actor` the resident and `layer: "brain"`. The brain's events say what happened; the why is in `causes`. See the Technical Guide § The brain for the mechanics (bands, urges, the scheduler's rules, willpower).
+
+| Type | When | `data` | Causes |
+|---|---|---|---|
+| `need.crossed` | a need moved between bands (`ok`, `low`, `urgent`), with hysteresis so it never flaps | `need` (`hunger`, `fatigue`, `boredom`, `loneliness`), `from`, `to`, `value` (the level that did it) | after drift: the previous crossing of the same need, so a need's history is a chain. After a tool: the `tool.used` that moved it |
+| `mood.shifted` | mood moved between bands (`low`, `neutral`, `high`) | `from`, `to`, `value` | the previous shift, or the `tool.used` |
+| `urge.unmet` | an urge above the floor that no tool in the catalog answers, logged once when it first goes unmet (not every slot after). In M0 that is `approach`: a Recluse's loneliness with no one to call | `urge`, `pressure` | the crossings of the needs behind the urge |
+| `tool.chosen` | once per resident per slot: the scheduler's decision | `tool` (or `null` for idle), `rule` (`need`, `habit`, `intention`, `impulse`, `urge`, `idle`), and depending on the rule: `need` (the urgent need), `urge` and `pressure` (what drove it), `overrode` (`{ urge, pressure }` when an intention beat an urge, `{ intention }` when an urge beat an intention), `cost` (willpower spent) | the crossings of the needs behind the driving urge, plus the `willpower.depleted` if there was one |
+| `tool.used` | the tool was applied | `tool`, `changes`: the realized delta per level (`hunger`, `fatigue`, `boredom`, `loneliness`, `mood`, `arousal`, `willpower`), after clamping, zeros omitted | the `tool.chosen` |
+| `willpower.depleted` | an intention lost to an urge because the bar couldn't cover the override | `needed`, `available`, `urge`, `intention` | the crossings behind the urge |
+
+Levels in `data` are rounded to four places. Idle slots have a `tool.chosen` and no `tool.used`.
+
 ### Reserved families
 
 Later issues define these, here and in `EventCatalog`, and nowhere else:
 
 | Family | Layer | Arrives with |
 |---|---|---|
-| `need.*`, `mood.*`, `urge.*`, `tool.*`, `willpower.*` | `brain` | M0.2, Walt's brain (#9) |
 | `plan.*`, `intention.*`, `habit.*`, `memory.*` | `mind` | M0.3, Walt's mind (#10) |
 | `belief.*` | `self` | M0.5 (self-beliefs) and M4 (the Observer belief) |
 | `director.*` | `director` | the Director |
@@ -81,7 +95,16 @@ One row per resident per slot, recorded after every resident has stepped:
 {"day":1,"slot":7,"actor":"walt","energy":0.62,"hunger":0.41}
 ```
 
-`day`, `slot`, and `actor` are the key; every other column is a number. Columns arrive with the layers that own them (M0.2 adds needs, mood, and willpower). In M0.1 a row holds only the key. Serialized key order is the key, then columns alphabetical.
+`day`, `slot`, and `actor` are the key; every other column is a number, rounded to four places. The brain's columns, present for every resident every slot:
+
+| Column | Scale | Meaning |
+|---|---|---|
+| `hunger`, `fatigue`, `boredom`, `loneliness` | 0..1, higher is more pressing | the needs |
+| `mood` | -1..1 | valence, fast-moving |
+| `arousal` | 0..1 | how keyed up |
+| `willpower` | 0..1 | what's left in the bar |
+
+Rows show the slot's end: after drift and after the slot's tool. Serialized key order is the key, then columns alphabetical.
 
 ## The run folder
 

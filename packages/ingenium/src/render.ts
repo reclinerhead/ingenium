@@ -40,6 +40,20 @@ export interface RenderOptions {
  */
 type Renderers = { [T in EventType]: (data: EventCatalog[T]) => string };
 
+/** `+0.15` or `-0.5`: a signed delta. */
+function signed(n: number): string {
+  return `${n > 0 ? "+" : ""}${n}`;
+}
+
+/** `hunger -0.5, mood +0.03`: a `tool.used` change set, in the order recorded. */
+function changeList(changes: Readonly<Record<string, number | undefined>>): string {
+  const parts: string[] = [];
+  for (const [level, delta] of Object.entries(changes)) {
+    if (delta !== undefined) parts.push(`${level} ${signed(delta)}`);
+  }
+  return parts.length === 0 ? "no change" : parts.join(", ");
+}
+
 const renderers: Renderers = {
   // JSON.stringify on the seed shows whether it was a number or a string:
   // `seed 1` versus `seed "walt"`.
@@ -48,6 +62,35 @@ const renderers: Renderers = {
   "day.started": (d) => `${d.weekday} begins`,
   "day.ended": (d) => `${d.weekday} ends`,
   "run.ended": (d) => `run ended after ${d.days} ${d.days === 1 ? "day" : "days"} (${d.slots} slots)`,
+
+  // The brain's lines say what happened, not why. The why is in the causes.
+  "need.crossed": (d) => `${d.need} ${d.from} → ${d.to} (${d.value})`,
+  "mood.shifted": (d) => `mood ${d.from} → ${d.to} (${d.value})`,
+  "urge.unmet": (d) => `urge ${d.urge} (${d.pressure}) has no tool`,
+  "tool.chosen": (d) => {
+    // Idle is its own line; the rule would only repeat it.
+    if (d.tool === null) return "idle";
+    // Otherwise the tool, then the rule and its particulars in brackets.
+    const what = d.tool;
+    const why: string[] = [];
+    switch (d.rule) {
+      case "need":
+        why.push(`need override: ${d.need}`);
+        break;
+      case "urge":
+        why.push(`urge: ${d.urge} ${d.pressure}`);
+        break;
+      default:
+        why.push(d.rule);
+    }
+    if (d.overrode) {
+      why.push("urge" in d.overrode ? `overrode ${d.overrode.urge} ${d.overrode.pressure}` : `over intention ${d.overrode.intention}`);
+    }
+    if (d.cost !== undefined) why.push(`willpower -${d.cost}`);
+    return `${what} (${why.join(", ")})`;
+  },
+  "tool.used": (d) => `used ${d.tool}: ${changeList(d.changes)}`,
+  "willpower.depleted": (d) => `willpower out: ${d.intention} needed ${d.needed}, had ${d.available}; ${d.urge} wins`,
 };
 
 /**
