@@ -61,14 +61,45 @@ describe("brainHooks on the loop", () => {
     }
   });
 
-  it("logs the Recluse's unmet approach urge once per stretch, not every slot", () => {
-    const unmet = week.events.filter((e) => e.type === "urge.unmet");
-    expect(unmet.length).toBeGreaterThan(0);
-    expect(unmet.length).toBeLessThan(10);
-    for (const e of unmet) expect(e.type === "urge.unmet" && e.data.urge).toBe("approach");
-    // Loneliness goes urgent during the week and nothing brings it down.
+  it("logs the Recluse's unmet approach urge once per stretch: once pulling, once urgent (#13)", () => {
+    // Loneliness climbs all week and nothing brings it down. Approach goes
+    // unanswered from the first slot it clears the floor, is interrupted
+    // many times by stronger urges, and steps up once when loneliness goes
+    // urgent. That is two stretches, so two events, however many times a
+    // meal or a nap won the slot in between.
     const lonely = week.events.find((e) => e.type === "need.crossed" && e.data.need === "loneliness" && e.data.to === "urgent");
     expect(lonely).toBeDefined();
+    const unmet = week.events.filter((e) => e.type === "urge.unmet");
+    expect(unmet.map((e) => e.type === "urge.unmet" && e.data.urge)).toEqual(["approach", "approach"]);
+    const [pulling, urgent] = unmet as [(typeof unmet)[0], (typeof unmet)[0]];
+    expect(pulling.id).toBeLessThan(lonely!.id);
+    expect(urgent.id).toBeGreaterThan(lonely!.id);
+    expect(urgent.causes).toContain(lonely!.id);
+  });
+
+  it("makes a drift-time mood shift cite the pressing need's crossing (#13)", () => {
+    // Once loneliness is urgent, drift's pressure term drags mood down every
+    // slot. The mood band crossing that follows must point back at the
+    // loneliness crossing, or "why did his mood drop?" answers "nothing".
+    const lonely = week.events.find((e) => e.type === "need.crossed" && e.data.need === "loneliness" && e.data.to === "urgent")!;
+    const drop = week.events.find((e) => e.type === "mood.shifted" && e.data.to === "low" && e.id > lonely.id);
+    expect(drop).toBeDefined();
+    expect(drop!.causes).toContain(lonely.id);
+    // And the chain continues: the urgent crossing cites the low one.
+    const earlier = week.events.find((e) => e.type === "need.crossed" && e.data.need === "loneliness" && e.data.to === "low")!;
+    expect(lonely.causes).toContain(earlier.id);
+  });
+
+  it("leaves a mood shift with no pressing need citing only its predecessor", () => {
+    const run = runSim({ seed: 1, days: 7, hooks: brainHooks() });
+    for (const e of run.events) {
+      if (e.type !== "mood.shifted") continue;
+      const lonelyUrgent = run.events.find((c) => c.type === "need.crossed" && c.data.need === "loneliness" && c.data.to === "urgent")!;
+      if (e.id < lonelyUrgent.id) {
+        // Before anything is pressing, causes are the previous shift or a tool.
+        for (const id of e.causes) expect(["mood.shifted", "tool.used"]).toContain(run.events[id - 1]!.type);
+      }
+    }
   });
 
   it("is deterministic: the same seed produces byte-identical output", () => {

@@ -38,9 +38,9 @@ import type { Resident, SimContext, SimHooks } from "../run.ts";
 import { TOOLS, type ToolId, applyTool } from "../tools/catalog.ts";
 import { type Bands, type MoodShift, type NeedCrossing, initialBands, updateBands } from "./bands.ts";
 import type { BrainDials } from "./dials.ts";
-import { drift } from "./drift.ts";
+import { PRESSURE_FROM, drift } from "./drift.ts";
 import { type Intention, schedule } from "./scheduler.ts";
-import { type BrainState, INITIAL_BRAIN_STATE, type Need, clamp01, round4, snapshotOf } from "./state.ts";
+import { type BrainState, INITIAL_BRAIN_STATE, NEEDS, type Need, clamp01, round4, snapshotOf } from "./state.ts";
 import { NEEDS_BEHIND, type Urge, urgePressures } from "./urges.ts";
 
 export interface BrainOptions {
@@ -63,8 +63,15 @@ interface Memory {
   readonly lastCrossing: Partial<Record<Need, number>>;
   /** The latest `mood.shifted` event ID, for causes. */
   lastMoodShift: number | undefined;
-  /** Urges currently unmet, so `urge.unmet` fires once per stretch. */
-  readonly unmet: Set<Urge>;
+  /**
+   * Urges currently unmet, each with the stretch it fired under, so
+   * `urge.unmet` fires once per stretch. A stretch is "pulling" (the need
+   * behind the urge is below urgent) or "urgent"; the step from one to the
+   * other is a new stretch and gets its own event. The stretch ends when the
+   * need drops back, and the urge may fire again if it climbs again. An urge
+   * with no need behind it (`flee`) is a stretch while it stays unmet.
+   */
+  readonly unmet: Map<Urge, string>;
 }
 
 export function brainHooks(options: BrainOptions = {}): SimHooks {
@@ -81,7 +88,7 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
         dials: options.dials?.(resident) ?? brainDialsFor(resident.archetype),
         lastCrossing: {},
         lastMoodShift: undefined,
-        unmet: new Set(),
+        unmet: new Map(),
       };
       memories.set(resident.id, m);
     }
@@ -100,9 +107,26 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
   };
 
   /**
-   * Log a round of band crossings. `causeOf` names what to cite: for the
-   * drift round, the previous crossing of the same level; for the tool
-   * round, the `tool.used` event.
+   * The crossings of the needs that are pressing right now: above the
+   * threshold at which drift starts dragging mood down and arousal up. When
+   * drift moves mood across a band, these are what did it. Pressure itself
+   * is computed from levels, which aren't events, so the crossing that put
+   * the need up there is the nearest event to cite.
+   */
+  const pressingCrossings = (m: Memory): number[] => {
+    const ids: number[] = [];
+    for (const need of NEEDS) {
+      const id = m.lastCrossing[need];
+      if (m.state.needs[need] > PRESSURE_FROM && id !== undefined) ids.push(id);
+    }
+    return ids;
+  };
+
+  /**
+   * Log a round of band crossings. `needCauseOf` and `moodCauseOf` name what
+   * to cite. For the drift round: a need cites its own previous crossing,
+   * and mood cites its previous shift plus the crossings of any pressing
+   * need. For the tool round: everything cites the `tool.used` event.
    */
   const logCrossings = (
     ctx: SimContext,
@@ -110,14 +134,15 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
     m: Memory,
     crossings: readonly NeedCrossing[],
     moodShift: MoodShift | undefined,
-    causeOf: (previous: number | undefined) => readonly number[],
+    needCauseOf: (previous: number | undefined) => readonly number[],
+    moodCauseOf: (previous: number | undefined) => readonly number[],
   ): void => {
     for (const c of crossings) {
       const e = ctx.append({
         actor: resident.id,
         layer: "brain",
         type: "need.crossed",
-        causes: causeOf(m.lastCrossing[c.need]),
+        causes: needCauseOf(m.lastCrossing[c.need]),
         data: { need: c.need, from: c.from, to: c.to, value: round4(c.value) },
       });
       m.lastCrossing[c.need] = e.id;
@@ -127,12 +152,20 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
         actor: resident.id,
         layer: "brain",
         type: "mood.shifted",
-        causes: causeOf(m.lastMoodShift),
+        causes: moodCauseOf(m.lastMoodShift),
         data: { from: moodShift.from, to: moodShift.to, value: round4(moodShift.value) },
       });
       m.lastMoodShift = e.id;
     }
   };
+
+  /**
+   * Which stretch an unmet urge is in: "urgent" when any need behind it is
+   * in its urgent band, "pulling" otherwise. The step from pulling to urgent
+   * is a new stretch worth its own `urge.unmet`.
+   */
+  const stretchOf = (m: Memory, urge: Urge): string =>
+    NEEDS_BEHIND[urge].some((need) => m.bands.needs[need] === "urgent") ? "urgent" : "pulling";
 
   return {
     step(ctx, resident) {
@@ -141,10 +174,17 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
       // 1. Drift.
       m.state = drift(m.state, ctx.time.slot, m.dials);
 
-      // 2. Crossings from drift: each cites the previous crossing of its own level.
+      // 2. Crossings from drift. A need cites its own previous crossing. Mood
+      // cites its previous shift and, when a need is pressing, that need's
+      // crossing: drift's pressure term is what moved it, and the crossing
+      // is the event that put the need up there.
       const drifted = updateBands(m.bands, m.state);
       m.bands = drifted.bands;
-      logCrossings(ctx, resident, m, drifted.crossings, drifted.moodShift, (prev) => (prev === undefined ? [] : [prev]));
+      const previousOnly = (prev: number | undefined) => (prev === undefined ? [] : [prev]);
+      logCrossings(ctx, resident, m, drifted.crossings, drifted.moodShift, previousOnly, (prev) => [
+        ...previousOnly(prev),
+        ...pressingCrossings(m),
+      ]);
 
       // 3. Urges, 4. decide.
       const urges = urgePressures(m.state, ctx.time.slot);
@@ -158,10 +198,14 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
         rng: ctx.rng("impulse"),
       });
 
-      // 5. Unmet urges: log on the rising edge, clear when met or faded.
+      // 5. Unmet urges: log once per stretch. A stretch is keyed by the band
+      // of the need behind the urge (pulling or urgent), not by whether the
+      // scheduler happened to look at the urge this slot; a stronger urge
+      // winning a slot doesn't end the loneliness underneath.
       const unmetNow = new Set(decision.unmet.map((u) => u.urge));
       for (const u of decision.unmet) {
-        if (m.unmet.has(u.urge)) continue;
+        const stretch = stretchOf(m, u.urge);
+        if (m.unmet.get(u.urge) === stretch) continue;
         ctx.append({
           actor: resident.id,
           layer: "brain",
@@ -169,9 +213,16 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
           causes: crossingsBehind(m, u.urge),
           data: { urge: u.urge, pressure: round4(u.pressure) },
         });
-        m.unmet.add(u.urge);
+        m.unmet.set(u.urge, stretch);
       }
-      for (const urge of [...m.unmet]) if (!unmetNow.has(urge)) m.unmet.delete(urge);
+      // End stretches that are over: the need dropped back (its stretch key
+      // changed while the urge wasn't noted), or, for an urge with no need
+      // behind it, the urge simply isn't unmet any more.
+      for (const [urge, stretch] of [...m.unmet]) {
+        if (unmetNow.has(urge)) continue;
+        const needless = NEEDS_BEHIND[urge].length === 0;
+        if (needless || stretchOf(m, urge) !== stretch) m.unmet.delete(urge);
+      }
 
       // 6. Willpower: a lost fight is an event; a won one is a deduction.
       const chosenCauses = crossingsBehind(m, decision.urge ?? (decision.overrode && "urge" in decision.overrode ? decision.overrode.urge : undefined));
@@ -219,7 +270,7 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
         });
         const after = updateBands(m.bands, m.state);
         m.bands = after.bands;
-        logCrossings(ctx, resident, m, after.crossings, after.moodShift, () => [used.id]);
+        logCrossings(ctx, resident, m, after.crossings, after.moodShift, () => [used.id], () => [used.id]);
       }
     },
 
