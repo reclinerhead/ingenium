@@ -88,8 +88,11 @@ export const TOOLS: Readonly<Record<ToolId, Tool>> = {
       // offsets, sized against the Recluse's rates). Without this he wakes
       // at 02:00 for a snack or his workbench.
       needs: { fatigue: -0.2, boredom: -0.08, hunger: -0.035 },
-      // Sleep is the main willpower refill.
-      willpower: 0.15,
+      // Sleep is the main willpower refill: a four-slot night restores
+      // about a third of a bar, on top of the slow trickle in drift. Sized
+      // so that a day of holding intentions against urges can run the bar
+      // down by evening, which is what makes overrides possible at all.
+      willpower: 0.08,
       arousal: -0.15,
       mood: 0.03,
     }),

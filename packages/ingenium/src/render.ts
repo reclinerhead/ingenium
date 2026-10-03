@@ -91,6 +91,33 @@ const renderers: Renderers = {
   },
   "tool.used": (d) => `used ${d.tool}: ${changeList(d.changes)}`,
   "willpower.depleted": (d) => `willpower out: ${d.intention} needed ${d.needed}, had ${d.available}; ${d.urge} wins`,
+
+  // The mind's lines. A plan reads as a list; everything else is one fact.
+  "plan.made": (d) => {
+    const hour = (slot: number) => `${String(slot * 2).padStart(2, "0")}:00`;
+    const intentions = d.intentions.map((i) => `${i.tool} ${hour(i.from)}–${hour(i.to + 1)} p${i.priority}`);
+    const habits = d.habits.map((h) => `${h.tool} ${hour(h.slot)} (${h.habit_id})`);
+    const policies = d.policies.map((p) =>
+      p.kind === "not_before" ? `not ${p.tool} before ${hour(p.slot)}` : p.kind === "at_most" ? `${p.tool} at most ${p.n}` : `avoid ${p.tool}`,
+    );
+    const parts = [
+      intentions.length ? `intends ${intentions.join(", ")}` : "intends nothing",
+      habits.length ? `habits ${habits.join(", ")}` : "",
+      policies.length ? `policies: ${policies.join("; ")}` : "",
+      d.carried ? `(${d.carried} carried over)` : "",
+    ].filter(Boolean);
+    return `plan: ${parts.join("; ")}`;
+  },
+  "intention.kept": (d) => `kept intention ${d.tool} (p${d.priority}, by ${d.rule})`,
+  "intention.dropped": (d) => `dropped intention ${d.tool} (p${d.priority}, ${d.reason.replace("_", " ")}${d.carried ? `, carried ${d.carried}` : ""})`,
+  "memory.formed": (d) => `remembers #${d.of}${d.distortion === "none" ? "" : ` as ${d.distortion}`} (${d.memory_id}, salience ${d.salience})`,
+  "habit.formed": (d) =>
+    `habit ${d.habit_id} formed: ${d.tool} at ${String(d.context.slot * 2).padStart(2, "0")}:00, by ${d.mechanism} (strength ${d.strength})`,
+  "habit.strengthened": (d) => `habit ${d.habit_id} (${d.tool}) ${d.from} → ${d.to} (${d.strength})`,
+  "habit.weakened": (d) => `habit ${d.habit_id} (${d.tool}) ${d.from} → ${d.to} (${d.strength})`,
+  "habit.broken": (d) => `habit ${d.habit_id} (${d.tool}) broken after ${d.lived_days} ${d.lived_days === 1 ? "day" : "days"}: ${d.reason.replace("_", " ")}`,
+  "day.reviewed": (d) =>
+    `review: kept ${d.kept}, dropped ${d.dropped}, carried ${d.carried}, overrides ${d.overrides}, habits +${d.habits_formed} −${d.habits_broken}`,
 };
 
 /**

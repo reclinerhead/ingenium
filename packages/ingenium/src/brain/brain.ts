@@ -48,10 +48,23 @@ export interface BrainOptions {
   readonly initial?: (resident: Resident) => BrainState;
   /** The dials to use. Defaults to the resident's archetype table. */
   readonly dials?: (resident: Resident) => BrainDials;
-  /** Rule 2's input: tools whose habit is due this slot. The mind's, in M0.3. */
+  /** Rule 2's input: tools whose habit is due this slot. The mind's (habits/observer.ts). */
   readonly dueHabits?: (ctx: SimContext, resident: Resident, state: BrainState) => readonly ToolId[];
-  /** Rule 3's input: what the resident means to do this slot. The mind's, in M0.3. */
+  /** Rule 3's input: what the resident means to do this slot. The mind's (mind/mind.ts). */
   readonly intentions?: (ctx: SimContext, resident: Resident, state: BrainState) => readonly Intention[];
+  /** Tools the mind's policies rule out for a whim this slot. Rule 4 skips them. */
+  readonly blocked?: (ctx: SimContext, resident: Resident, state: BrainState) => readonly ToolId[];
+}
+
+/**
+ * The brain, with a window for the mind. `hooks` go on the loop; `stateOf`
+ * and `bandsOf` let the mind read a resident's levels and bands after the
+ * brain's step without the brain exposing anything writable.
+ */
+export interface Brain {
+  readonly hooks: SimHooks;
+  stateOf(residentId: string): BrainState | undefined;
+  bandsOf(residentId: string): Bands | undefined;
 }
 
 /** What the brain remembers about one resident between slots. */
@@ -74,7 +87,12 @@ interface Memory {
   readonly unmet: Map<Urge, string>;
 }
 
+/** The brain's hooks alone, for a brain-only run or a test. */
 export function brainHooks(options: BrainOptions = {}): SimHooks {
+  return createBrain(options).hooks;
+}
+
+export function createBrain(options: BrainOptions = {}): Brain {
   const memories = new Map<string, Memory>();
 
   /** The resident's memory, created on first sight. */
@@ -167,7 +185,7 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
   const stretchOf = (m: Memory, urge: Urge): string =>
     NEEDS_BEHIND[urge].some((need) => m.bands.needs[need] === "urgent") ? "urgent" : "pulling";
 
-  return {
+  const hooks: SimHooks = {
     step(ctx, resident) {
       const m = remember(resident);
 
@@ -196,6 +214,7 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
         intentions: options.intentions?.(ctx, resident, m.state) ?? [],
         dials: m.dials,
         rng: ctx.rng("impulse"),
+        blocked: options.blocked?.(ctx, resident, m.state) ?? [],
       });
 
       // 5. Unmet urges: log once per stretch. A stretch is keyed by the band
@@ -277,5 +296,11 @@ export function brainHooks(options: BrainOptions = {}): SimHooks {
     snapshot(_ctx, resident): SnapshotValues {
       return snapshotOf(remember(resident).state);
     },
+  };
+
+  return {
+    hooks,
+    stateOf: (id) => memories.get(id)?.state,
+    bandsOf: (id) => memories.get(id)?.bands,
   };
 }
