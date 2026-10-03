@@ -33,6 +33,13 @@
 import type { SimTime } from "./clock.ts";
 import type { Weekday } from "./clock.ts";
 import type { Seed } from "./rng.ts";
+// Type-only imports from the brain: the catalog names the brain's vocabularies
+// without the log depending on the brain at runtime.
+import type { MoodBand, NeedBand } from "./brain/bands.ts";
+import type { Depletion, Overrode, Rule } from "./brain/scheduler.ts";
+import type { Need } from "./brain/state.ts";
+import type { Urge } from "./brain/urges.ts";
+import type { Changes, ToolId } from "./tools/catalog.ts";
 
 /**
  * The contract with analysis code. Bump it when the envelope or an existing
@@ -77,10 +84,9 @@ export type Layer = (typeof LAYERS)[number];
  * vocabulary: appending a type that isn't a key here is a compile error, and
  * so is appending the wrong `data` shape for a type.
  *
- * M0.1 defines the run and day boundaries. Later issues add their families
- * here, and only here:
+ * M0.1 defines the run and day boundaries and M0.2 the brain's families.
+ * Later issues add theirs here, and only here:
  *
- *   need.*  mood.*  urge.*  tool.*  willpower.*     M0.2, the brain (#9)
  *   plan.*  intention.*  habit.*  memory.*          M0.3, the mind (#10)
  *   belief.*                                        M0.5 and M4
  *   director.*                                      the Director
@@ -104,6 +110,38 @@ export interface EventCatalog {
   "day.ended": { weekday: Weekday };
   /** The last event. `slots` lets a reader check the snapshot table is complete. */
   "run.ended": { days: number; slots: number };
+
+  // --- The brain (M0.2). actor is the resident, layer is "brain". ---------
+
+  /** A need moved between bands (brain/bands.ts). `value` is the level that did it. */
+  "need.crossed": { need: Need; from: NeedBand; to: NeedBand; value: number };
+  /** Mood moved between bands. */
+  "mood.shifted": { from: MoodBand; to: MoodBand; value: number };
+  /**
+   * An urge above the floor that no tool in the catalog answers. Logged once
+   * when it first goes unmet, not every slot after. In M0 that is
+   * `approach`: a Recluse's loneliness with no one to call.
+   */
+  "urge.unmet": { urge: Urge; pressure: number };
+  /**
+   * The scheduler's decision for the slot (brain/scheduler.ts). `tool` is
+   * null for idle. `urge`/`pressure` say what drove it when an urge did,
+   * `need` names the urgent need for a need override, `overrode` what the
+   * decision pushed aside, and `cost` the willpower it spent.
+   */
+  "tool.chosen": {
+    tool: ToolId | null;
+    rule: Rule;
+    urge?: Urge;
+    pressure?: number;
+    need?: Need;
+    overrode?: Overrode;
+    cost?: number;
+  };
+  /** A tool was applied. `changes` holds the realized delta per level, zeros omitted. */
+  "tool.used": { tool: ToolId; changes: Changes };
+  /** An intention lost to an urge because the willpower bar couldn't cover the override. */
+  "willpower.depleted": Depletion;
 }
 
 export type EventType = keyof EventCatalog;
@@ -114,7 +152,18 @@ export type EventType = keyof EventCatalog;
  * check that every entry is a real key of the catalog; it doesn't yet check
  * that no key is missing, so keep the two in step by hand.
  */
-export const EVENT_TYPES = ["run.started", "day.started", "day.ended", "run.ended"] as const satisfies readonly EventType[];
+export const EVENT_TYPES = [
+  "run.started",
+  "day.started",
+  "day.ended",
+  "run.ended",
+  "need.crossed",
+  "mood.shifted",
+  "urge.unmet",
+  "tool.chosen",
+  "tool.used",
+  "willpower.depleted",
+] as const satisfies readonly EventType[];
 
 // ---------------------------------------------------------------------------
 // The envelope

@@ -16,6 +16,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  brainHooks,
   eventsToJsonl,
   renderEvent,
   runSim,
@@ -84,7 +85,9 @@ function main(): void {
   const days = Number(values.days);
   if (!Number.isInteger(days) || days < 1) fail(`--days must be a positive integer, got "${values.days}"`);
 
-  const run = runSim({ seed, days });
+  // The loop is bare; what runs on it is the caller's choice. Today that is
+  // the brain alone (M0.2). M0.3 composes the mind's hooks in here too.
+  const run = runSim({ seed, days, hooks: brainHooks() });
 
   if (values.out !== undefined) {
     const dir = values.out === DEFAULT_OUT ? join("runs", `seed-${String(seed)}`) : values.out;
