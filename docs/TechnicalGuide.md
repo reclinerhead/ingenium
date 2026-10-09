@@ -17,6 +17,8 @@ runs/                  Run folders written by `pnpm sim --out`. Gitignored; repr
 docs/TechnicalGuide.md This file.
 docs/event-log.md      The event log reference: envelope, conventions, every type, analysis quickstart.
 docs/EngineIdeas.md    The engine's design tenets.
+docs/archetypes.md     The cast: eight archetypes, seven houses per seed, and the starting leanings.
+docs/run_visualizer/   Design handoff for the run-analysis dashboard. The page is not built; issue #18 is the contract.
 docs/decisions/        Architecture decision records (ADRs).
 compose.yaml           The container as it runs on orchid.
 deploy/                The deploy watcher for orchid: autodeploy.sh and its systemd unit.
