@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/modernist-f0fd6f20-ab5e-4d85-9ed5-31e6be839718/styles.css">
+<script src="_ds/modernist-f0fd6f20-ab5e-4d85-9ed5-31e6be839718/_ds_bundle.js"></script>
+<style>body{margin:0;background:var(--color-bg)} a{color:var(--color-accent)} a:hover{color:var(--color-accent-600)} button{font-family:inherit;color:inherit}</style>
+</helmet>
+<div style="min-height:100vh; display:flex; flex-direction:column; font-variant-numeric:tabular-nums; background:var(--color-bg); color:var(--color-text)">
+
+<nav class="nav" style="background:var(--color-bg); position:sticky; top:0; z-index:20">
+  <div class="nav-brand" style="display:flex; align-items:baseline; gap:12px; white-space:nowrap">Ingenium <span style="font-weight:400; font-size:14px; color:var(--color-neutral-700)">Run analysis</span></div>
+  <span class="tag tag-neutral">{{sourceLabel}}</span>
+  <label class="btn btn-secondary" style="cursor:pointer; white-space:nowrap">Load run folder<input ref="{{fileRef}}" type="file" multiple="multiple" onChange="{{onFiles}}" style="display:none"></label>
+</nav>
+
+<div style="flex:1; display:grid; grid-template-columns:288px minmax(0,1fr); align-items:start">
+
+  <aside style="position:sticky; top:62px; max-height:calc(100vh - 62px); overflow:auto; border-right:2px solid var(--color-divider); padding:20px 16px; display:flex; flex-direction:column; gap:20px">
+    <div style="display:flex; flex-direction:column; gap:8px">
+      <h6 style="margin:0">Compare against</h6>
+      <div style="display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--color-divider)">
+        <button onClick="{{setRefAll}}" style="border:0; padding:7px 10px; font-size:13px; text-align:left; cursor:pointer; background:{{refAllBg}}; color:{{refAllFg}}">All runs</button>
+        <button onClick="{{setRefCfg}}" style="border:0; border-left:1px solid var(--color-divider); padding:7px 10px; font-size:13px; text-align:left; cursor:pointer; background:{{refCfgBg}}; color:{{refCfgFg}}">Same config</button>
+      </div>
+      <div style="font-size:12px; color:var(--color-neutral-700); text-wrap:pretty">{{refHint}}</div>
+    </div>
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+      <div style="display:flex; flex-direction:column; border-top:2px solid var(--color-divider); padding-top:10px">
+        <div style="display:flex; align-items:center; gap:8px; justify-content:space-between">
+          <div style="font-weight:800; font-size:15px">{{g.name}}</div>
+          <sc-if value="{{g.test}}" hint-placeholder-val="{{false}}"><span class="tag tag-accent">test</span></sc-if>
+        </div>
+        <div style="font-size:12px; color:var(--color-neutral-700); margin-bottom:8px">{{g.note}}</div>
+        <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="4">
+          <button onClick="{{r.onClick}}" style="border:0; border-top:1px solid var(--color-divider); padding:8px 6px; display:grid; grid-template-columns:64px 1fr 44px; gap:10px; align-items:center; text-align:left; cursor:pointer; background:{{r.bg}}; color:{{r.fg}}" style-hover="background:var(--color-neutral-200)">
+            <span style="font-size:13px; font-weight:600">{{r.label}}</span>
+            <span style="height:6px; background:var(--color-neutral-300); position:relative"><span style="position:absolute; left:0; top:0; bottom:0; width:{{r.bar}}%; background:var(--color-accent)"></span></span>
+            <span style="font-size:12px; text-align:right">{{r.nov}}</span>
+          </button>
+        </sc-for>
+      </div>
+    </sc-for>
+    <div style="font-size:12px; color:var(--color-neutral-700); border-top:2px solid var(--color-divider); padding-top:10px; text-wrap:pretty">Bar = novelty: RMS z-score of the run's behaviour against the comparison set. Load a <b>runs/</b> folder written by <b>pnpm sim --out</b> to add real seeds.</div>
+  </aside>
+
+  <main style="min-width:0; padding:24px 28px 48px; display:flex; flex-direction:column; gap:28px">
+
+    <header style="display:flex; flex-direction:column; gap:14px">
+      <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:10px 16px">
+        <div class="card-kicker" style="font-size:11px">{{run.expName}}</div>
+        <div style="font-size:12px; color:var(--color-neutral-700)">{{run.expNote}}</div>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 24px; justify-content:space-between">
+        <h1 style="margin:0; font-size:44px">{{run.title}}</h1>
+        <div style="font-size:13px; color:var(--color-neutral-700)">{{run.meta}}</div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); border-top:2px solid var(--color-divider); border-bottom:2px solid var(--color-divider)">
+        <sc-for list="{{kpis}}" as="k" hint-placeholder-count="7">
+          <div style="padding:12px 14px; border-right:1px solid var(--color-divider); display:flex; flex-direction:column; gap:2px">
+            <div style="font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--color-neutral-700)">{{k.label}}</div>
+            <div style="font-size:32px; font-weight:800; line-height:1.1; color:{{k.color}}">{{k.value}}</div>
+            <div style="font-size:12px; color:var(--color-neutral-700)">{{k.sub}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </header>
+
+    <section style="display:flex; flex-direction:column; gap:10px">
+      <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 20px">
+        <div style="display:flex; align-items:baseline; gap:14px">
+          <h4 style="margin:0">Needs over the run</h4>
+          <span style="font-size:12px; color:var(--color-neutral-700)">Snapshot per slot · dashed lines are the low (0.50) and urgent (0.80) bands · click a slot to ask why</span>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:4px">
+          <button onClick="{{tg.hunger}}" style="border:1px solid var(--color-divider); background:transparent; padding:5px 10px; display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; opacity:{{op.hunger}}"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" style="stroke:var(--color-neutral-600); stroke-width:2; stroke-dasharray:5 3"></line></svg>hunger</button>
+          <button onClick="{{tg.fatigue}}" style="border:1px solid var(--color-divider); background:transparent; padding:5px 10px; display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; opacity:{{op.fatigue}}"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" style="stroke:var(--color-neutral-400); stroke-width:3"></line></svg>fatigue</button>
+          <button onClick="{{tg.boredom}}" style="border:1px solid var(--color-divider); background:transparent; padding:5px 10px; display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; opacity:{{op.boredom}}"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" style="stroke:var(--color-text); stroke-width:1.5"></line></svg>boredom</button>
+          <button onClick="{{tg.loneliness}}" style="border:1px solid var(--color-divider); background:transparent; padding:5px 10px; display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; opacity:{{op.loneliness}}"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" style="stroke:var(--color-accent); stroke-width:3"></line></svg>loneliness</button>
+        </div>
+      </div>
+
+      <div style="position:relative; width:100%; padding-left:36px; user-select:none; box-sizing:border-box">
+        <div style="position:relative; width:100%">
+          <svg viewBox="0 0 1000 280" preserveAspectRatio="none" style="display:block; width:100%; height:280px">
+            <sc-for list="{{ch.bands}}" as="b" hint-placeholder-count="0"><rect x="{{b.x}}" y="0" width="{{b.w}}" height="280" style="fill:var(--color-surface)"></rect></sc-for>
+            <sc-for list="{{ch.grid}}" as="gl" hint-placeholder-count="0"><line x1="0" x2="1000" y1="{{gl.y}}" y2="{{gl.y}}" style="stroke:var(--color-divider); stroke-width:{{gl.sw}}; stroke-dasharray:{{gl.dash}}; vector-effect:non-scaling-stroke"></line></sc-for>
+            <sc-for list="{{ch.paths}}" as="p" hint-placeholder-count="0"><path d="{{p.d}}" style="fill:none; stroke:{{p.color}}; stroke-width:{{p.sw}}; stroke-dasharray:{{p.dash}}; stroke-linejoin:round; vector-effect:non-scaling-stroke"></path></sc-for>
+          </svg>
+          <sc-for list="{{ch.grid}}" as="gl" hint-placeholder-count="0"><div style="position:absolute; left:-36px; width:30px; text-align:right; font-size:11px; line-height:1; color:var(--color-neutral-700); top:{{gl.top}}px">{{gl.label}}</div></sc-for>
+          <sc-for list="{{ch.dayLabels}}" as="dl" hint-placeholder-count="0"><div style="position:absolute; top:4px; font-size:11px; font-weight:600; color:var(--color-neutral-700); white-space:nowrap; left:calc({{dl.x}}% + 6px)">{{dl.label}}</div></sc-for>
+
+          <div style="position:relative; height:18px; margin-top:6px">
+            <div style="position:absolute; left:-36px; width:30px; text-align:right; top:3px; font-size:10px; color:var(--color-neutral-700)">tool</div>
+            <sc-for list="{{ch.ribbon}}" as="c" hint-placeholder-count="0"><div style="position:absolute; top:0; height:18px; left:{{c.x}}%; width:{{c.w}}%; background:{{c.color}}; box-shadow:inset -1px 0 0 var(--color-bg)"></div></sc-for>
+          </div>
+
+          <div style="position:relative; height:40px; border-bottom:1px solid var(--color-divider)">
+            <div style="position:absolute; left:-36px; width:30px; text-align:right; top:14px; font-size:10px; color:var(--color-neutral-700)">events</div>
+            <sc-for list="{{mk.formed}}" as="m" hint-placeholder-count="0"><button title="{{m.title}}" onClick="{{m.onClick}}" style="position:absolute; z-index:3; padding:0; border:0; cursor:pointer; left:calc({{m.x}}% - 5px); top:{{m.y}}px; width:10px; height:10px; background:var(--color-accent)"></button></sc-for>
+            <sc-for list="{{mk.broken}}" as="m" hint-placeholder-count="0"><button title="{{m.title}}" onClick="{{m.onClick}}" style="position:absolute; z-index:3; padding:0; cursor:pointer; left:calc({{m.x}}% - 5px); top:{{m.y}}px; width:10px; height:10px; background:var(--color-bg); border:2px solid var(--color-accent)"></button></sc-for>
+            <sc-for list="{{mk.depleted}}" as="m" hint-placeholder-count="0"><button title="{{m.title}}" onClick="{{m.onClick}}" style="position:absolute; z-index:3; padding:0; border:0; cursor:pointer; left:calc({{m.x}}% - 5px); top:{{m.y}}px; width:10px; height:10px; background:var(--color-text); clip-path:polygon(50% 0, 100% 100%, 0 100%)"></button></sc-for>
+            <sc-for list="{{mk.unmet}}" as="m" hint-placeholder-count="0"><button title="{{m.title}}" onClick="{{m.onClick}}" style="position:absolute; z-index:3; padding:0; cursor:pointer; left:calc({{m.x}}% - 5px); top:{{m.y}}px; width:10px; height:10px; border-radius:50%; background:var(--color-bg); border:2px solid var(--color-text)"></button></sc-for>
+            <sc-for list="{{mk.rational}}" as="m" hint-placeholder-count="0"><button title="{{m.title}}" onClick="{{m.onClick}}" style="position:absolute; z-index:3; padding:0; border:0; cursor:pointer; left:calc({{m.x}}% - 5px); top:{{m.y}}px; width:9px; height:9px; transform:rotate(45deg); background:var(--color-accent-700)"></button></sc-for>
+          </div>
+
+          <sc-if value="{{showMood}}" hint-placeholder-val="{{true}}">
+            <div style="position:relative; margin-top:8px">
+              <svg viewBox="0 0 1000 110" preserveAspectRatio="none" style="display:block; width:100%; height:110px">
+                <sc-for list="{{ch.bands2}}" as="b" hint-placeholder-count="0"><rect x="{{b.x}}" y="0" width="{{b.w}}" height="110" style="fill:var(--color-surface)"></rect></sc-for>
+                <line x1="0" x2="1000" y1="{{ch.mid2}}" y2="{{ch.mid2}}" style="stroke:var(--color-divider); stroke-width:1; vector-effect:non-scaling-stroke"></line>
+                <sc-for list="{{ch.paths2}}" as="p" hint-placeholder-count="0"><path d="{{p.d}}" style="fill:none; stroke:{{p.color}}; stroke-width:{{p.sw}}; stroke-dasharray:{{p.dash}}; stroke-linejoin:round; vector-effect:non-scaling-stroke"></path></sc-for>
+              </svg>
+              <div style="position:absolute; left:-36px; width:30px; text-align:right; top:0; font-size:11px; color:var(--color-neutral-700)">+1</div>
+              <div style="position:absolute; left:-36px; width:30px; text-align:right; bottom:0; font-size:11px; color:var(--color-neutral-700)">−1</div>
+            </div>
+            <div style="display:flex; gap:18px; font-size:12px; color:var(--color-neutral-700); margin-top:4px; flex-wrap:wrap">
+              <span style="display:flex; align-items:center; gap:6px"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" style="stroke:var(--color-text); stroke-width:2"></line></svg>mood (−1…1)</span>
+              <span style="display:flex; align-items:center; gap:6px"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" style="stroke:var(--color-accent); stroke-width:2; stroke-dasharray:2 3"></line></svg>willpower (0…1, centre = 0.5)</span>
+            </div>
+          </sc-if>
+
+          <div onMouseMove="{{onMove}}" onMouseLeave="{{onLeave}}" onClick="{{onChartClick}}" style="position:absolute; z-index:2; top:0; bottom:0; left:0; right:0; cursor:crosshair"></div>
+          <sc-if value="{{sel.hasSlot}}" hint-placeholder-val="{{false}}"><div style="position:absolute; z-index:1; pointer-events:none; top:0; bottom:0; left:{{sel.x}}%; width:{{sel.w}}%; min-width:2px; background:color-mix(in srgb, var(--color-accent) 16%, transparent); border-left:2px solid var(--color-accent)"></div></sc-if>
+          <sc-if value="{{hover.on}}" hint-placeholder-val="{{false}}">
+            <div style="position:absolute; z-index:4; pointer-events:none; top:0; bottom:0; left:{{hover.x}}%; width:1px; background:var(--color-text)"></div>
+            <div style="position:absolute; z-index:5; pointer-events:none; top:24px; left:{{hover.boxLeft}}; width:220px; background:var(--color-bg); box-shadow:var(--shadow-md); padding:10px 12px; display:flex; flex-direction:column; gap:4px; font-size:12px">
+              <div style="font-weight:800; font-size:13px">{{hover.when}}</div>
+              <div style="color:var(--color-accent-700); font-weight:600">{{hover.tool}}</div>
+              <sc-for list="{{hover.rows}}" as="hr" hint-placeholder-count="0"><div style="display:flex; justify-content:space-between; border-top:1px solid var(--color-neutral-300); padding-top:2px"><span>{{hr.k}}</span><span style="font-weight:600">{{hr.v}}</span></div></sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-wrap:wrap; gap:8px 18px; font-size:12px; color:var(--color-neutral-700); padding-left:36px">
+        <sc-for list="{{toolLegend}}" as="t" hint-placeholder-count="6"><span style="display:flex; align-items:center; gap:6px"><span style="width:12px; height:12px; background:{{t.color}}; border:1px solid var(--color-neutral-300)"></span>{{t.label}}</span></sc-for>
+        <span style="width:1px; background:var(--color-divider)"></span>
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--color-accent)"></span>habit formed</span>
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; border:2px solid var(--color-accent)"></span>habit broken</span>
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; background:var(--color-text); clip-path:polygon(50% 0, 100% 100%, 0 100%)"></span>willpower depleted</span>
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; border-radius:50%; border:2px solid var(--color-text)"></span>urge unmet</span>
+        <span style="display:flex; align-items:center; gap:6px"><span style="width:9px; height:9px; transform:rotate(45deg); background:var(--color-accent-700)"></span>rationalized memory</span>
+      </div>
+    </section>
+
+    <section style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px,1fr)); gap:28px; align-items:start">
+
+      <div style="display:flex; flex-direction:column; min-width:0">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; border-top:2px solid var(--color-divider); padding-top:10px; margin-bottom:6px">
+          <h4 style="margin:0">Unexpected</h4>
+          <span style="font-size:12px; color:var(--color-neutral-700)">{{unexpHint}}</span>
+        </div>
+        <div style="max-height:760px; overflow:auto; display:flex; flex-direction:column">
+          <sc-for list="{{unexpected}}" as="u" hint-placeholder-count="5">
+            <button onClick="{{u.onClick}}" style="border:0; border-bottom:1px solid var(--color-divider); padding:12px 6px; display:grid; grid-template-columns:64px minmax(0,1fr); gap:12px; text-align:left; cursor:pointer; background:{{u.bg}}" style-hover="background:var(--color-neutral-200)">
+              <div style="display:flex; flex-direction:column; gap:4px">
+                <span style="font-size:22px; font-weight:800; line-height:1; color:var(--color-accent)">{{u.badge}}</span>
+                <span style="font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--color-neutral-700)">{{u.kind}}</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:4px; min-width:0">
+                <span style="font-weight:800; font-size:15px; line-height:1.25">{{u.title}}</span>
+                <span style="font-size:13px; color:var(--color-neutral-800); text-wrap:pretty">{{u.detail}}</span>
+              </div>
+            </button>
+          </sc-for>
+          <sc-if value="{{noUnexpected}}" hint-placeholder-val="{{false}}"><div style="padding:16px 0; font-size:13px; color:var(--color-neutral-700)">Nothing beyond the threshold. This seed behaved like its comparison set.</div></sc-if>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; min-width:0">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; border-top:2px solid var(--color-divider); padding-top:10px; margin-bottom:6px">
+          <h4 style="margin:0">Habits</h4>
+          <span style="font-size:12px; color:var(--color-neutral-700)">{{habitHint}}</span>
+        </div>
+        <div style="max-height:760px; overflow:auto; display:flex; flex-direction:column">
+          <sc-for list="{{habits}}" as="h" hint-placeholder-count="4">
+            <button onClick="{{h.onClick}}" style="border:0; border-bottom:1px solid var(--color-divider); padding:12px 6px; display:flex; flex-direction:column; gap:8px; text-align:left; cursor:pointer; background:{{h.bg}}" style-hover="background:var(--color-neutral-200)">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; width:100%">
+                <span class="tag tag-neutral">{{h.id}}</span>
+                <span style="font-weight:800; font-size:15px">{{h.tool}}</span>
+                <span style="font-size:13px; color:var(--color-neutral-700)">{{h.at}}</span>
+                <span style="margin-left:auto; font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:3px 8px; background:{{h.mechBg}}; color:{{h.mechFg}}">{{h.mechanism}}</span>
+              </div>
+              <div style="position:relative; height:14px; width:100%; background:var(--color-neutral-200)">
+                <div style="position:absolute; top:0; bottom:0; left:{{h.barL}}%; width:{{h.barW}}%; background:{{h.barColor}}"></div>
+                <sc-if value="{{h.isBroken}}" hint-placeholder-val="{{false}}"><div style="position:absolute; top:-2px; bottom:-2px; width:2px; left:{{h.barEnd}}%; background:var(--color-accent)"></div></sc-if>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--color-neutral-700); width:100%"><span>{{h.span}}</span><span style="font-weight:600; color:var(--color-text)">{{h.fate}}</span></div>
+              <div style="font-size:13px; color:var(--color-neutral-800); text-wrap:pretty">{{h.why}}</div>
+              <div style="font-size:12px; color:var(--color-neutral-700)">{{h.context}}</div>
+            </button>
+          </sc-for>
+          <sc-if value="{{noHabits}}" hint-placeholder-val="{{false}}"><div style="padding:16px 0; font-size:13px; color:var(--color-neutral-700)">No habits formed in this run.</div></sc-if>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; min-width:0">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; border-top:2px solid var(--color-divider); padding-top:10px; margin-bottom:6px">
+          <h4 style="margin:0">Memories</h4>
+          <div style="display:flex; border:1px solid var(--color-divider)">
+            <button onClick="{{memAll}}" style="border:0; padding:4px 10px; font-size:12px; cursor:pointer; background:{{memAllBg}}; color:{{memAllFg}}">All · {{memCount}}</button>
+            <button onClick="{{memRat}}" style="border:0; border-left:1px solid var(--color-divider); padding:4px 10px; font-size:12px; cursor:pointer; background:{{memRatBg}}; color:{{memRatFg}}">Rationalized · {{ratCount}}</button>
+            <button onClick="{{memHigh}}" style="border:0; border-left:1px solid var(--color-divider); padding:4px 10px; font-size:12px; cursor:pointer; background:{{memHighBg}}; color:{{memHighFg}}">≥ 0.8</button>
+          </div>
+        </div>
+        <div style="max-height:760px; overflow:auto; display:flex; flex-direction:column">
+          <sc-for list="{{memories}}" as="m" hint-placeholder-count="5">
+            <button onClick="{{m.onClick}}" style="border:0; border-bottom:1px solid var(--color-divider); padding:12px 6px; display:flex; flex-direction:column; gap:6px; text-align:left; cursor:pointer; background:{{m.bg}}" style-hover="background:var(--color-neutral-200)">
+              <div style="display:flex; align-items:center; gap:8px; width:100%">
+                <span class="tag tag-neutral">{{m.id}}</span>
+                <span style="font-weight:800; font-size:14px">{{m.label}}</span>
+                <span style="font-size:12px; color:var(--color-neutral-700)">{{m.when}}</span>
+                <sc-if value="{{m.rat}}" hint-placeholder-val="{{false}}"><span class="tag tag-accent">rationalized</span></sc-if>
+                <span style="margin-left:auto; display:flex; align-items:center; gap:6px; font-size:11px; color:var(--color-neutral-700)"><span style="width:44px; height:5px; background:var(--color-neutral-300); position:relative"><span style="position:absolute; left:0; top:0; bottom:0; width:{{m.sal}}%; background:var(--color-text)"></span></span>{{m.salTxt}}</span>
+              </div>
+              <sc-if value="{{m.rat}}" hint-placeholder-val="{{false}}">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0; width:100%; border-top:1px solid var(--color-neutral-300)">
+                  <div style="padding:6px 10px 2px 0; display:flex; flex-direction:column; gap:2px"><span style="font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--color-accent-700)">He remembers</span><span style="font-size:13px; font-style:italic">{{m.remembered}}</span></div>
+                  <div style="padding:6px 0 2px 10px; border-left:1px solid var(--color-neutral-300); display:flex; flex-direction:column; gap:2px"><span style="font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--color-neutral-700)">The log says</span><span style="font-size:13px">{{m.logged}}</span></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{m.plain}}" hint-placeholder-val="{{true}}"><div style="font-size:13px; color:var(--color-neutral-800); text-wrap:pretty">{{m.text}}</div></sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; min-width:0; position:sticky; top:78px">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; border-top:2px solid var(--color-text); padding-top:10px; margin-bottom:10px">
+          <h4 style="margin:0">Why?</h4>
+          <span style="font-size:12px; color:var(--color-neutral-700)">causes, walked back</span>
+        </div>
+        <sc-if value="{{why.on}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex; flex-direction:column; gap:12px">
+            <div class="card" style="gap:6px; padding:14px">
+              <div class="card-kicker">{{why.kicker}}</div>
+              <div class="card-title" style="font-size:20px">{{why.title}}</div>
+              <div style="font-size:13px; text-wrap:pretty">{{why.text}}</div>
+            </div>
+            <div style="display:flex; flex-direction:column">
+              <sc-for list="{{why.chain}}" as="c" hint-placeholder-count="0">
+                <button onClick="{{c.onClick}}" style="border:0; border-bottom:1px solid var(--color-neutral-300); background:transparent; padding:6px 4px 6px {{c.pad}}px; display:grid; grid-template-columns:60px minmax(0,1fr); gap:8px; text-align:left; cursor:pointer" style-hover="background:var(--color-neutral-200)">
+                  <span style="font-size:11px; color:var(--color-neutral-700)">#{{c.id}} · {{c.when}}</span>
+                  <span style="font-size:13px; font-weight:{{c.weight}}">{{c.text}}</span>
+                </button>
+              </sc-for>
+            </div>
+            <sc-if value="{{why.hasEffects}}" hint-placeholder-val="{{false}}">
+              <div style="display:flex; flex-direction:column; gap:2px">
+                <h6 style="margin:6px 0 4px">What it led to</h6>
+                <sc-for list="{{why.effects}}" as="c" hint-placeholder-count="0">
+                  <button onClick="{{c.onClick}}" style="border:0; border-bottom:1px solid var(--color-neutral-300); background:transparent; padding:6px 4px; display:grid; grid-template-columns:60px minmax(0,1fr); gap:8px; text-align:left; cursor:pointer" style-hover="background:var(--color-neutral-200)">
+                    <span style="font-size:11px; color:var(--color-neutral-700)">#{{c.id}} · {{c.when}}</span>
+                    <span style="font-size:13px">{{c.text}}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{why.off}}" hint-placeholder-val="{{true}}"><div style="font-size:13px; color:var(--color-neutral-700)">Pick an unexpected result, habit, memory, marker or chart slot to trace its causes.</div></sc-if>
+      </div>
+    </section>
+
+    <section style="display:flex; flex-direction:column; gap:10px">
+      <div style="display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:10px; border-top:2px solid var(--color-divider); padding-top:10px">
+        <h4 style="margin:0">Across seeds</h4>
+        <span style="font-size:12px; color:var(--color-neutral-700)">Cell tint = z-score against all other runs · red above, grey below · click a row to open it</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="table" style="font-size:13px; min-width:1100px">
+          <thead><tr>
+            <th style="position:sticky; left:0; background:var(--color-bg)">Run</th>
+            <th>Novelty</th>
+            <sc-for list="{{matrix.cols}}" as="c" hint-placeholder-count="12"><th style="white-space:nowrap">{{c}}</th></sc-for>
+          </tr></thead>
+          <tbody>
+            <sc-for list="{{matrix.rows}}" as="r" hint-placeholder-count="8">
+              <tr onClick="{{r.onClick}}" style="cursor:pointer; outline:{{r.outline}}; outline-offset:-2px">
+                <td style="position:sticky; left:0; background:var(--color-bg); white-space:nowrap; font-weight:{{r.weight}}">{{r.label}}</td>
+                <td style="font-weight:800">{{r.nov}}</td>
+                <sc-for list="{{r.cells}}" as="c" hint-placeholder-count="12"><td style="background:{{c.bg}}; white-space:nowrap">{{c.v}}</td></sc-for>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;runDays&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;7&quot;,&quot;14&quot;],&quot;default&quot;:&quot;7&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Sample runs&quot;},&quot;zThreshold&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:1,&quot;max&quot;:3,&quot;step&quot;:0.1,&quot;default&quot;:1.5,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Novelty&quot;},&quot;showMoodPanel&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Chart&quot;}}">
+const NEEDS=['hunger','fatigue','boredom','loneliness'];
+const LEVELS=['hunger','fatigue','boredom','loneliness','mood','arousal','willpower'];
+const URGE_NEED={consume:'hunger',rest:'fatigue',express:'boredom',approach:'loneliness'};
+const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const HH=s=>String(s*2).padStart(2,'0')+':00';
+const r4=v=>Math.round(v*1e4)/1e4;
+const c01=v=>v<0?0:v>1?1:v;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const f2=v=>(v>=0?'+':'−')+Math.abs(v).toFixed(2);
+const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+function rng(seed){let a=seed>>>0||1;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+// Ported from packages/ingenium/src/tools/catalog.ts; write_letter is a test tool.
+const TOOLS={
+  eat:{sat:{consume:1},fx:s=>({hunger:-Math.min(s.hunger,.5),boredom:-.05,mood:.1*s.hunger})},
+  sleep:{sat:{rest:1},fx:()=>({fatigue:-.2,boredom:-.08,hunger:-.035,willpower:.08,arousal:-.15,mood:.03})},
+  listen_to_music:{sat:{rest:.4,withdraw:.6},fx:()=>({boredom:-.25,fatigue:-.05,mood:.15,arousal:-.15})},
+  pursue_hobby:{sat:{express:.7,fix:.6},av:s=>s.fatigue<.85,fx:()=>({boredom:-.4,fatigue:.05,mood:.2,arousal:.1})},
+  reflect:{sat:{withdraw:.8},av:s=>s.arousal>=.5||s.mood<=-.25,fx:s=>({arousal:-.3,mood:s.mood<0?Math.min(.1,-s.mood):0,boredom:.05})},
+  take_a_walk:{sat:{express:.5},av:s=>s.fatigue<.7,fx:s=>{const k=c01((s.loneliness-.4)/.6);return{boredom:-.3,loneliness:-.15,fatigue:.1,mood:.1+.25*k,arousal:-.1};}},
+  write_letter:{test:true,sat:{approach:.6},av:s=>s.loneliness>=.45&&s.fatigue<.8,fx:s=>({loneliness:-.3,boredom:-.1,mood:.12+.2*s.loneliness,arousal:.05})},
+};
+const WIN={pursue_hobby:[3,7],listen_to_music:[7,10],reflect:[8,10],take_a_walk:[5,9],eat:[5,7],write_letter:[6,9]};
+const TOOL_COLOR={sleep:'var(--color-neutral-300)',eat:'var(--color-neutral-600)',listen_to_music:'var(--color-neutral-500)',pursue_hobby:'var(--color-text)',reflect:'var(--color-accent-300)',take_a_walk:'var(--color-accent)',write_letter:'var(--color-accent-700)'};
+const EXTRA_COLORS=['var(--color-accent-500)','var(--color-neutral-800)','var(--color-accent-200)','var(--color-neutral-400)'];
+const RAT={pursue_hobby:'“The workbench could wait. I wasn’t in the mood.”',take_a_walk:'“It looked like rain anyway.”',listen_to_music:'“Didn’t feel like records tonight.”',reflect:'“Nothing much to think about, really.”',eat:'“I wasn’t that hungry.”',write_letter:'“Nobody to write to, really.”'};
+
+function bandOf(v,p){if(p==='urgent')return v<.75?(v<.45?'ok':'low'):'urgent';if(p==='low')return v>=.8?'urgent':v<.45?'ok':'low';return v>=.8?'urgent':v>=.5?'low':'ok';}
+function moodBandOf(v,p){if(p==='high')return v<.2?(v<=-.25?'low':'neutral'):'high';if(p==='low')return v>-.2?(v>=.25?'high':'neutral'):'low';return v>=.25?'high':v<=-.25?'low':'neutral';}
+function strBand(cur,s){if(cur==='fragile')return s>=.7?'ingrained':s>=.4?'settled':'fragile';if(cur==='settled')return s>=.7?'ingrained':s<.3?'fragile':'settled';return s>=.6?'ingrained':s<.3?'fragile':'settled';}
+function salienceOf(e){const d=e.data||{};switch(e.type){case'willpower.depleted':return .9;case'habit.broken':return .8;case'habit.formed':return .6;case'urge.unmet':return .4+.4*d.pressure;case'mood.shifted':return d.to==='neutral'?.3:.6;case'tool.chosen':return d.overrode?.8:.1;case'tool.used':return Math.min(1,Math.abs((d.changes||{}).mood||0)*2);case'intention.dropped':return .3+.1*d.priority;default:return .1;}}
+const outcomeOf=ch=>{let r=0;for(const n of NEEDS)r+=Math.max(0,-(ch[n]||0));return (ch.mood||0)+.25*r;};
+
+// A compact stand-in for the engine loop: same event vocabulary, causes and snapshot columns.
+function simulate(cfg,seed,days){
+  const R=rng(seed*9973+7),ev=[],snaps=[];
+  const add=(d,sl,type,data,causes,layer)=>{ev.push({id:ev.length+1,day:d,slot:sl,actor:'walt',layer:layer||'brain',type,causes:[...new Set((causes||[]).filter(Boolean))],data});return ev.length;};
+  const catalog=Object.keys(TOOLS).filter(t=>!TOOLS[t].test||cfg.tools.includes(t));
+  const s={hunger:.3+R()*.1,fatigue:.7,boredom:.2+R()*.1,loneliness:.08+R()*.06,mood:0,arousal:.3,willpower:.8};
+  const band={},lastCross={};NEEDS.forEach(n=>band[n]=bandOf(s[n],'ok'));
+  let moodBand='neutral',lastShift=null,memN=0,habN=0,curD=1,curS=0,blockedHobby=false,prevObs=null,unmet=null;
+  const active=new Map(),evidence=new Map(),credited=new Map();
+  const mem=(id,dist,extra)=>{const e=ev[id-1];const sa=salienceOf(e);if(sa<.5)return;memN++;add(e.day,e.slot,'memory.formed',{distortion:dist||'none',memory_id:'m'+memN,of:id,salience:r4(sa)},[id,extra],'mind');};
+  const avail=t=>(!TOOLS[t].av||TOOLS[t].av(s))&&!(t==='pursue_hobby'&&blockedHobby&&curS<4);
+  const best=u=>{let b=null,w=0;for(const t of catalog){if(!avail(t))continue;const x=TOOLS[t].sat[u]||0;if(x>w){w=x;b=t;}}return b;};
+  const INIT={reinforcement:.5,accident:.35,superstition:.3,coping:.4};
+  const form=(o,mech,evid)=>{habN++;const h={id:'h'+habN,tool:o.tool,slot:o.slot,mech,strength:INIT[mech],band:strBand('fragile',INIT[mech]),formedDay:curD};h.ev=add(curD,curS,'habit.formed',{context:{mood_band:o.moodBand,previous_tool:o.prev,slot:o.slot},habit_id:h.id,mechanism:mech,strength:h.strength,tool:o.tool},evid,'mind');active.set(o.tool+'@'+o.slot,h);mem(h.ev);};
+  const adjust=(h,delta,cause,reason)=>{if(!delta)return;h.strength=Math.min(1,r4(h.strength+delta));if(h.strength<=0){h.strength=0;active.delete(h.tool+'@'+h.slot);const id=add(curD,curS,'habit.broken',{formed_day:h.formedDay,habit_id:h.id,lived_days:curD-h.formedDay,reason,tool:h.tool},[cause,h.ev],'mind');mem(id);return;}const b=strBand(h.band,h.strength);if(b!==h.band){add(curD,curS,delta>0?'habit.strengthened':'habit.weakened',{from:h.band,habit_id:h.id,strength:h.strength,to:b,tool:h.tool},[cause,h.ev],'mind');h.band=b;}};
+  const check=toolEv=>{
+    for(const n of NEEDS){const nb=bandOf(s[n],band[n]);if(nb!==band[n]){lastCross[n]=add(curD,curS,'need.crossed',{from:band[n],need:n,to:nb,value:r4(s[n])},[toolEv||lastCross[n]]);band[n]=nb;}}
+    const mb=moodBandOf(s.mood,moodBand);
+    if(mb!==moodBand){const c=toolEv?[toolEv]:[lastShift,...NEEDS.filter(n=>s[n]>.75).map(n=>lastCross[n])];const id=add(curD,curS,'mood.shifted',{from:moodBand,to:mb,value:r4(s.mood)},c);moodBand=mb;lastShift=id;mem(id);}
+  };
+  const startId=add(1,0,'run.started',{days,residents:['walt'],seed,start_weekday:'Mon'},[],'world');
+  let prevEnd=startId,carried=[],lastReview=null;
+  for(let d=1;d<=days;d++){
+    curD=d;curS=0;
+    const ds=add(d,0,'day.started',{weekday:WD[(d-1)%7]},[prevEnd],'world');
+    blockedHobby=R()<.9;
+    const n=Math.max(0,cfg.density-carried.length);
+    const fresh=Object.entries(cfg.affinity).filter(([t])=>catalog.includes(t)&&!carried.some(c=>c.tool===t)).map(([t,a])=>({t,a,k:a*(.5+R()),go:R()<a+.05})).filter(x=>x.go).sort((x,y)=>y.k-x.k).slice(0,n);
+    const plan=[...carried.map(c=>({...c,carried:c.carried+1,kept:false,overridden:false})),...fresh.map(x=>({tool:x.t,from:WIN[x.t][0],to:WIN[x.t][1],priority:x.a>=.8?3:x.a>=.5?2:1,carried:0,kept:false,overridden:false}))];
+    const planEv=add(d,0,'plan.made',{carried:carried.length,habits:[...active.values()].map(h=>({habit_id:h.id,slot:h.slot,tool:h.tool})),intentions:plan.map(p=>({from:p.from,priority:p.priority,to:p.to,tool:p.tool})),policies:blockedHobby?[{kind:'not_before',slot:4,tool:'pursue_hobby'}]:[]},[lastReview||ds],'mind');
+    let kept=0,overrides=0;const hf0=habN;let hb=0;
+    for(let sl=0;sl<12;sl++){
+      curS=sl;
+      const j=()=>.85+R()*.3,tf=1+.5*Math.cos(2*Math.PI*(sl-.5)/12);
+      s.hunger=c01(s.hunger+.07*j());s.fatigue=c01(s.fatigue+cfg.fatigue*tf*j());s.boredom=c01(s.boredom+.08*j());s.loneliness=c01(s.loneliness+cfg.lonely*j());
+      const press=NEEDS.reduce((a,k)=>a+Math.max(0,s[k]-.75),0);
+      s.mood=clamp(s.mood*.8-.12*press-.04*Math.max(0,s.loneliness-.55),-1,1);
+      s.arousal=c01(s.arousal+(.3-s.arousal)*.25+.15*press);
+      s.willpower=c01(s.willpower+.004+(s.mood>.25?.004:0));
+      check(null);
+      const stressed=s.arousal>=.6||s.mood<=-.25,mbIn=moodBand;
+      const U={consume:s.hunger,rest:s.fatigue,express:s.boredom,approach:s.loneliness,withdraw:c01(s.arousal*.9+Math.max(0,-s.mood)*.5)};
+      const ranked=Object.entries(U).sort((a,b)=>b[1]-a[1]);
+      const topU=ranked.find(([u,p])=>p>=.2&&best(u));
+      const urgentN=NEEDS.filter(k=>band[k]==='urgent'&&best(URGE_NEED[k]?Object.keys(URGE_NEED).find(u=>URGE_NEED[u]===k):'')).sort((a,b)=>s[b]-s[a])[0];
+      const due=[...active.values()].filter(h=>h.slot===sl&&avail(h.tool)&&R()<.2+.4*h.strength).sort((a,b)=>b.strength-a.strength)[0];
+      const intent=plan.find(p=>!p.kept&&!p.overridden&&sl>=p.from&&sl<=p.to&&avail(p.tool));
+      let tool=null,rule='idle',data={},causes=[],wpEv=null,rat=false;
+      const urgeOf=k=>Object.keys(URGE_NEED).find(u=>URGE_NEED[u]===k);
+      if(urgentN){tool=best(urgeOf(urgentN));rule='need';data={need:urgentN};causes=[lastCross[urgentN]];}
+      else if(due&&!(intent&&intent.priority>=2)){tool=due.tool;rule='habit';data={habit_id:due.id};causes=[due.ev];}
+      else if(intent){
+        const [u,p]=topU||[null,0];
+        if(u&&p>=.28&&(TOOLS[intent.tool].sat[u]||0)<.3&&best(u)!==intent.tool){
+          overrides++;const cost=r4((p-.15)*2/cfg.depth);
+          if(s.willpower>=cost){s.willpower-=cost;tool=intent.tool;rule='intention';data={cost,overrode:{pressure:r4(p),urge:u}};causes=[lastCross[URGE_NEED[u]]];}
+          else{wpEv=add(d,sl,'willpower.depleted',{available:r4(s.willpower),intention:intent.tool,needed:cost,urge:u},[lastCross[URGE_NEED[u]]]);mem(wpEv);tool=best(u);rule='urge';data={overrode:{intention:intent.tool},pressure:r4(p),urge:u};causes=[lastCross[URGE_NEED[u]],wpEv];intent.overridden=true;rat=true;}
+        }else{tool=intent.tool;rule='intention';}
+      }
+      else if(R()<cfg.impulsivity){const o=catalog.filter(avail).filter(t=>t!=='sleep');if(o.length){tool=o[Math.floor(R()*o.length)];rule='impulse';}}
+      if(!tool&&topU){tool=best(topU[0]);rule='urge';data={pressure:r4(topU[1]),urge:topU[0]};causes=[lastCross[URGE_NEED[topU[0]]]];}
+      const chosen=add(d,sl,'tool.chosen',{rule,tool,...data},causes);
+      if(rat)mem(chosen,'rationalized',wpEv);else if(data.overrode)mem(chosen);
+      let used=null;
+      if(tool){
+        const fx=TOOLS[tool].fx(s),before={...s},ch={};
+        for(const k in fx)s[k]=k==='mood'?clamp(s[k]+fx[k],-1,1):c01(s[k]+fx[k]);
+        for(const k of LEVELS){const dl=r4(s[k]-before[k]);if(dl)ch[k]=dl;}
+        used=add(d,sl,'tool.used',{changes:ch,tool},[chosen]);mem(used);check(used);
+        const o={day:d,slot:sl,tool,prev:prevObs?prevObs.tool:null,moodBand:mbIn,outcome:outcomeOf(ch),stressed,id:used};
+        const key=tool+'@'+sl;const list=(evidence.get(key)||[]).concat(o).filter(e=>d-e.day<7);evidence.set(key,list);
+        if(o.outcome>=.1&&prevObs&&prevObs.tool!==tool&&prevObs.outcome<.1&&((prevObs.day===d&&prevObs.slot===sl-1)||(prevObs.day===d-1&&prevObs.slot===11&&sl===0))){
+          const pk=prevObs.tool+'@'+prevObs.slot;const cr=(credited.get(pk)||[]).concat({p:prevObs.id,g:used});credited.set(pk,cr);
+          if(!active.has(pk)&&cr.length>=3&&prevObs.tool!=='sleep'){form(prevObs,'superstition',cr.slice(-3).flatMap(c=>[c.p,c.g]));credited.delete(pk);}
+        }
+        prevObs=o;
+        const ex=active.get(key);
+        if(ex){const b0=active.size;adjust(ex,o.outcome>=.1?.1:o.outcome<.08?-.1:0,used,'poor_outcomes');if(active.size<b0)hb++;}
+        else if(tool!=='sleep'){const good=list.filter(e=>e.outcome>=.1),cop=list.filter(e=>e.stressed&&e.outcome>=0);
+          if(o.outcome>=.4){form(o,'accident',[used]);evidence.delete(key);}
+          else if(good.length>=3){form(o,'reinforcement',good.slice(-3).map(e=>e.id));evidence.delete(key);}
+          else if(cop.length>=2){form(o,'coping',cop.slice(-2).map(e=>e.id));evidence.delete(key);}}
+        const p=plan.find(p=>!p.kept&&p.tool===tool&&sl>=p.from&&sl<=p.to);
+        if(p){p.kept=true;kept++;add(d,sl,'intention.kept',{priority:p.priority,rule,slot:sl,tool},[planEv,used],'mind');}
+      }else prevObs=null;
+      for(const h of [...active.values()])if(h.slot===sl&&h.tool!==tool){const b0=active.size;adjust(h,-.25,chosen,'skipped');if(active.size<b0)hb++;}
+      if(s.loneliness>=.5&&!best('approach')){if(!unmet){mem(add(d,sl,'urge.unmet',{pressure:r4(s.loneliness),urge:'approach'},[lastCross.loneliness]));unmet='unmet';}else if(unmet==='unmet'&&band.loneliness==='urgent'){mem(add(d,sl,'urge.unmet',{pressure:r4(s.loneliness),urge:'approach'},[lastCross.loneliness]));unmet='urgent';}}else if(s.loneliness<.45)unmet=null;
+      const row={day:d,slot:sl,actor:'walt'};for(const k of ['arousal','boredom','fatigue','hunger','loneliness','mood','willpower'])row[k]=r4(s[k]);snaps.push(row);
+    }
+    curS=11;const next=[];let dropped=0;
+    for(const p of plan){if(p.kept)continue;if(p.priority===1||p.carried>=cfg.persistence||p.overridden){mem(add(d,11,'intention.dropped',{carried:p.carried,priority:p.priority,reason:p.overridden?'overridden':'window_passed',tool:p.tool},[planEv],'mind'));dropped++;}else next.push(p);}
+    carried=next;
+    lastReview=add(d,11,'day.reviewed',{carried:next.length,dropped,habits_broken:hb,habits_formed:habN-hf0,kept,overrides},[planEv],'mind');
+    prevEnd=add(d,11,'day.ended',{weekday:WD[(d-1)%7]},[ds],'world');
+  }
+  add(days,11,'run.ended',{days,slots:days*12},[prevEnd],'world');
+  return{events:ev,snapshots:snaps};
+}
+
+const BASE={tools:[],fatigue:.06,lonely:.012,depth:.8,impulsivity:.08,density:3,persistence:2,affinity:{pursue_hobby:.9,listen_to_music:.6,reflect:.4,take_a_walk:.15,eat:.5,write_letter:.35}};
+const EXPS=[
+  {id:'E1',name:'Baseline',note:'Recluse · catalog M0',cfg:BASE,seeds:[11,23,37,42,58]},
+  {id:'E2',name:'+ write_letter',note:'Test tool that answers approach',test:true,cfg:{...BASE,tools:['write_letter']},seeds:[11,23,37,42]},
+  {id:'E3',name:'Deep willpower',note:'Recluse dials · willpower depth 0.8 → 2.0',test:true,cfg:{...BASE,depth:2},seeds:[11,23,37]},
+];
+
+function describe(e){const d=e.data||{};switch(e.type){
+  case'need.crossed':return `${d.need} ${d.from} → ${d.to} at ${(+d.value).toFixed(2)}`;
+  case'mood.shifted':return `mood ${d.from} → ${d.to} (${f2(+d.value)})`;
+  case'tool.chosen':return `chose ${d.tool||'idle'} by ${d.rule}${d.overrode&&d.overrode.intention?`, overriding the plan to ${d.overrode.intention}`:''}${d.overrode&&d.overrode.urge?`, holding against ${d.overrode.urge} ${d.overrode.pressure}`:''}${d.need?` (${d.need} urgent)`:''}`;
+  case'tool.used':{const ch=Object.entries(d.changes||{}).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,3).map(([k,v])=>`${k} ${f2(v)}`).join(', ');return `used ${d.tool}: ${ch}`;}
+  case'willpower.depleted':return `willpower ran out: needed ${d.needed}, had ${d.available}`;
+  case'urge.unmet':return `${d.urge} urge unanswered at ${(+d.pressure).toFixed(2)}`;
+  case'habit.formed':return `habit ${d.habit_id} formed: ${d.tool} by ${d.mechanism}`;
+  case'habit.strengthened':case'habit.weakened':return `habit ${d.habit_id} ${d.from} → ${d.to}`;
+  case'habit.broken':return `habit ${d.habit_id} broken (${String(d.reason).replace('_',' ')})`;
+  case'memory.formed':return `memory ${d.memory_id} · ${d.distortion} · salience ${(+d.salience).toFixed(2)}`;
+  case'plan.made':return `planned ${(d.intentions||[]).map(i=>i.tool).join(', ')||'nothing'}`;
+  case'intention.kept':return `kept the plan to ${d.tool}`;
+  case'intention.dropped':return `dropped ${d.tool} (${String(d.reason).replace('_',' ')})`;
+  case'day.reviewed':return `day reviewed: kept ${d.kept}, dropped ${d.dropped}`;
+  default:return e.type;}}
+
+function analyze(run,actor){
+  const E=run.events,byId=new Map(E.map(e=>[e.id,e]));
+  const mine=E.filter(e=>e.actor===actor);
+  const S=run.snapshots.filter(r=>r.actor===actor).sort((a,b)=>a.day-b.day||a.slot-b.slot);
+  const snapMap=new Map(S.map((r,i)=>[r.day*100+r.slot,i]));
+  const snapAt=(d,s)=>S[snapMap.get(d*100+s)];
+  const days=Math.max(1,...S.map(r=>r.day));
+  const kids=new Map();for(const e of E)for(const c of e.causes||[]){if(!kids.has(c))kids.set(c,[]);kids.get(c).push(e.id);}
+  const usedAt=new Map();const toolCount={};
+  const slotTool={};
+  for(const e of mine){if(e.type==='tool.used'){usedAt.set(e.day*100+e.slot,e);toolCount[e.data.tool]=(toolCount[e.data.tool]||0)+1;}if(e.type==='tool.chosen')slotTool[e.day*100+e.slot]=e;}
+  const habits=mine.filter(e=>e.type==='habit.formed').map(f=>{
+    const hid=f.data.habit_id;const later=mine.filter(e=>e.id>f.id&&e.data&&e.data.habit_id===hid);
+    const br=later.find(e=>e.type==='habit.broken');const lb=[...later].reverse().find(e=>e.type==='habit.strengthened'||e.type==='habit.weakened');
+    return{f,br,band:lb?lb.data.to:(f.data.strength>=.4?'settled':'fragile'),tool:f.data.tool,mech:f.data.mechanism};});
+  const memories=mine.filter(e=>e.type==='memory.formed').map(m=>({m,src:byId.get(m.data.of)})).filter(x=>x.src);
+  const n=S.length||1;
+  const feats={};
+  for(const t in toolCount)feats['share_'+t]=toolCount[t]/n;
+  feats.idle=mine.filter(e=>e.type==='tool.chosen'&&!e.data.tool).length/n;
+  feats.held=mine.filter(e=>e.type==='tool.chosen'&&e.data.overrode&&e.data.overrode.urge).length;
+  feats.lost=mine.filter(e=>e.type==='willpower.depleted').length;
+  feats.unmet=mine.filter(e=>e.type==='urge.unmet').length;
+  feats.habits=habits.length;feats.broken=habits.filter(h=>h.br).length;
+  feats.rationalized=memories.filter(x=>x.m.data.distortion==='rationalized').length;
+  feats.peakLonely=Math.max(0,...S.map(r=>r.loneliness||0));
+  feats.urgentLonely=S.filter(r=>(r.loneliness||0)>=.8).length/12;
+  feats.meanMood=avg(S.map(r=>r.mood||0));
+  const sigs=new Set(habits.map(h=>h.mech+':'+h.tool));
+  return{E,byId,mine,S,snapAt,days,kids,usedAt,slotTool,habits,memories,feats,sigs,toolCount};
+}
+
+function habitWhy(h,A){
+  const d=h.f.data,ev=(h.f.causes||[]).map(c=>A.byId.get(c)).filter(Boolean);
+  const out=e=>outcomeOf((e.data&&e.data.changes)||{});
+  if(d.mechanism==='reinforcement'){const ds=[...new Set(ev.map(e=>e.day))];return `${d.tool} at ${HH(d.context.slot)} on ${ds.length} separate days (${ds.map(x=>'d'+x).join(', ')}), each a good outcome — avg ${f2(avg(ev.map(out)))}. Repeating it in the same slot was enough.`;}
+  if(d.mechanism==='accident'){const e=ev[0];if(!e)return 'One strongly positive outcome.';const sn=A.snapAt(e.day,e.slot);const pre=sn?sn.loneliness-((e.data.changes||{}).loneliness||0):null;return `A single ${d.tool} on d${e.day} at ${HH(e.slot)} scored ${f2(out(e))}${pre!=null?`, with loneliness at ${pre.toFixed(2)} going in`:''}. Anything that felt that good gets tried again — one occurrence formed it.`;}
+  if(d.mechanism==='coping')return `Reached for ${d.tool} ${ev.length}× while keyed up or low, and it didn't make things worse. It became what he does when it's bad, not what he does for fun.`;
+  if(d.mechanism==='superstition'){const goods=ev.filter(e=>e.data.tool!==d.tool).map(e=>e.data.tool);return `Three times, the slot after ${d.tool} felt good — but the lift came from ${[...new Set(goods)].join(' / ')||'the next tool'}. ${d.tool} itself did little. The credit went to the wrong thing.`;}
+  return `Formed by ${d.mechanism}.`;
+}
+function memoryWhy(x,A){
+  const s=x.src,d=s.data||{},rat=x.m.data.distortion==='rationalized';
+  switch(s.type){
+    case'willpower.depleted':return{label:'Lost a fight',text:`Holding the plan to ${d.intention} needed ${d.needed} willpower; he had ${d.available}. The ${d.urge} urge won.`};
+    case'tool.chosen':
+      if(d.overrode&&d.overrode.intention)return{label:'Plan overridden',rat,remembered:RAT[d.overrode.intention]||'“It didn’t seem worth it.”',logged:`Willpower ran out. The ${d.urge} urge (${d.pressure}) beat the plan to ${d.overrode.intention}; he chose ${d.tool}.`,text:`Brain overrode mind on ${d.overrode.intention}.`};
+      return{label:'Held a plan',text:`Kept to ${d.tool} against a ${d.overrode.urge} urge at ${d.overrode.pressure}, spending ${d.cost} willpower.`};
+    case'urge.unmet':return{label:'Urge unmet',text:`The ${d.urge} urge reached ${(+d.pressure).toFixed(2)} and nothing in the catalog answers it.`};
+    case'mood.shifted':{const c=(s.causes||[]).map(i=>A.byId.get(i)).find(e=>e&&e.type==='tool.used');return{label:`Mood ${d.to}`,text:`Mood went ${d.from} → ${d.to} (${f2(+d.value)})${c?` after ${c.data.tool}`:', dragged by pressing needs'}.`};}
+    case'tool.used':{const sn=A.snapAt(s.day,s.slot);const lon=sn?sn.loneliness-((d.changes||{}).loneliness||0):0;return{label:d.tool,text:`${d.tool} moved mood ${f2((d.changes||{}).mood||0)}${lon>.6?` — after a long stretch indoors (loneliness ${lon.toFixed(2)})`:''}. Strong enough to stand out.`};}
+    case'habit.formed':return{label:'Habit formed',text:`${d.habit_id}: ${d.tool} by ${d.mechanism}.`};
+    case'habit.broken':return{label:'Habit lost',text:`${d.habit_id} (${d.tool}) died after ${d.lived_days} days — ${String(d.reason).replace('_',' ')}.`};
+    case'intention.dropped':return{label:'Gave up',text:`Let go of ${d.tool} (priority ${d.priority}, ${String(d.reason).replace('_',' ')}).`};
+    default:return{label:s.type,text:describe(s)};
+  }
+}
+
+const FLABEL={idle:'idle',held:'held',lost:'lost',unmet:'unmet',habits:'habits',broken:'broken',rationalized:'rational.',peakLonely:'peak lonely',urgentLonely:'days urgent lonely',meanMood:'mean mood'};
+const FLONG={idle:'Idle slots',held:'Overrides held',lost:'Fights lost to the body',unmet:'Unmet urges',habits:'Habits formed',broken:'Habits broken',rationalized:'Rationalized memories',peakLonely:'Peak loneliness',urgentLonely:'Time in urgent loneliness',meanMood:'Mean mood'};
+const fLabel=k=>k.startsWith('share_')?k.slice(6).replace('listen_to_music','music').replace('pursue_hobby','hobby').replace('take_a_walk','walk').replace('write_letter','letter'):FLABEL[k]||k;
+const fFmt=(k,v)=>k.startsWith('share_')||k==='idle'?(v*100).toFixed(1)+'%':k==='peakLonely'?v.toFixed(2):k==='meanMood'?f2(v):k==='urgentLonely'?v.toFixed(1)+'d':String(Math.round(v*10)/10);
+const fFloor=k=>k.startsWith('share_')||k==='idle'?.01:k==='peakLonely'||k==='meanMood'?.05:k==='urgentLonely'?.25:.5;
+
+class Component extends DCLogic {
+  state={runId:null,refMode:'all',sel:null,hover:null,cw:1100,hidden:{},memFilter:'all',loaded:[]};
+  fileRef=el=>{if(el)el.setAttribute('webkitdirectory','');};
+  componentDidMount(){}
+  
+  sample(days){if(this._sd!==days){this._sd=days;this._sample=[];for(const x of EXPS)for(const sd of x.seeds)this._sample.push({id:x.id+'/seed-'+sd,exp:x.id,expName:x.name,expNote:x.note,test:!!x.test,seed:sd,days,residents:['walt'],who:'Walt, the Recluse',...simulate(x.cfg,sd,days)});this._cache=new Map();}return this._sample;}
+  an(run){this._cache=this._cache||new Map();if(!this._cache.has(run.id))this._cache.set(run.id,analyze(run,run.residents[0]));return this._cache.get(run.id);}
+  onFiles=async e=>{
+    const files=[...e.target.files];const groups={};
+    for(const f of files){const p=(f.webkitRelativePath||f.name).split('/');const dir=p.slice(0,-1).join('/')||'upload';(groups[dir]=groups[dir]||{})[p[p.length-1]]=f;}
+    const out=[];
+    for(const dir in groups){const g=groups[dir];if(!g['events.jsonl']||!g['snapshots.jsonl'])continue;
+      const lines=async f=>(await f.text()).split('\n').filter(l=>l.trim()).map(l=>JSON.parse(l));
+      try{const events=await lines(g['events.jsonl']),snapshots=await lines(g['snapshots.jsonl']);let meta={};if(g['run.json'])meta=JSON.parse(await g['run.json'].text());
+        const rs=events.find(x=>x.type==='run.started');const residents=meta.residents||(rs&&rs.data.residents)||[...new Set(snapshots.map(r=>r.actor))];
+        const seed=meta.seed??(rs&&rs.data.seed)??dir;const name=dir.split('/').pop();
+        out.push({id:'L/'+dir,exp:'L',expName:'Loaded runs',expNote:'From disk · engine '+(meta.engine_version||'?'),seed,label:name,days:meta.days||(rs&&rs.data.days),residents:residents.map(r=>typeof r==='string'?r:r.id||r.name),who:String(residents[0]&&(residents[0].id||residents[0])),events,snapshots});}catch(err){console.warn('Could not parse',dir,err);}}
+    if(out.length)this.setState(s=>({loaded:[...s.loaded.filter(r=>!out.some(o=>o.id===r.id)),...out],runId:out[0].id,sel:null}));
+    e.target.value='';
+  };
+  renderVals(){
+    const days=Number(this.props.runDays??7)||7, zT=Number(this.props.zThreshold??1.5), showMood=this.props.showMoodPanel??true;
+    const runs=[...this.sample(days),...this.state.loaded];
+    const run=runs.find(r=>r.id===this.state.runId)||runs[0];
+    const A=this.an(run);const all=runs.map(r=>({r,A:this.an(r)}));
+    const keys=[...new Set(all.flatMap(x=>Object.keys(x.A.feats)))].sort((a,b)=>(b.startsWith('share_')-a.startsWith('share_'))||0);
+    const refOf=r=>all.filter(x=>x.r.id!==r.id&&(this.state.refMode==='all'||x.r.exp===r.exp));
+    const zOf=(r,Ar,ref)=>{const z={},m={};if(ref.length<2)return{z,m};for(const k of keys){const vs=ref.map(x=>x.A.feats[k]||0);const mu=avg(vs);const sd=Math.sqrt(avg(vs.map(v=>(v-mu)**2)));const e=Math.max(sd,fFloor(k),.15*Math.abs(mu));z[k]=((Ar.feats[k]||0)-mu)/e;m[k]=mu;}return{z,m};};
+    const nov=(r,Ar)=>{const{z}=zOf(r,Ar,refOf(r));const v=Object.values(z);return v.length?Math.sqrt(avg(v.map(x=>Math.min(x*x,36)))):0;};
+    const novs=new Map(all.map(x=>[x.r.id,nov(x.r,x.A)]));const maxN=Math.max(.01,...novs.values());
+    const sel=this.state.sel?A.byId.get(this.state.sel):null;
+    const select=id=>()=>this.setState({sel:id});
+    const selBg=id=>id===this.state.sel?'var(--color-accent-100)':'transparent';
+    const when=e=>`d${e.day} ${HH(e.slot)}`;
+
+    const groups=[];for(const x of all){let g=groups.find(g=>g.id===x.r.exp);if(!g){g={id:x.r.exp,name:x.r.expName,note:x.r.expNote,test:!!x.r.test,rows:[]};groups.push(g);}const on=x.r.id===run.id;g.rows.push({label:x.r.label||'seed '+x.r.seed,nov:novs.get(x.r.id).toFixed(1)+'σ',bar:Math.round(novs.get(x.r.id)/maxN*100),bg:on?'var(--color-text)':'transparent',fg:on?'var(--color-bg)':'var(--color-text)',onClick:()=>this.setState({runId:x.r.id,sel:null})});}
+
+    const ref=refOf(run);const{z,m}=zOf(run,A,ref);
+    const firstOf=(pred)=>{const e=A.mine.find(pred);return e?e.id:null;};
+    const featEvent=k=>k.startsWith('share_')?firstOf(e=>e.type==='tool.used'&&e.data.tool===k.slice(6)):k==='lost'?firstOf(e=>e.type==='willpower.depleted'):k==='held'?firstOf(e=>e.type==='tool.chosen'&&e.data.overrode&&e.data.overrode.urge):k==='unmet'?firstOf(e=>e.type==='urge.unmet'):k==='habits'?firstOf(e=>e.type==='habit.formed'):k==='broken'?firstOf(e=>e.type==='habit.broken'):k==='rationalized'?firstOf(e=>e.type==='memory.formed'&&e.data.distortion==='rationalized'):k==='peakLonely'||k==='urgentLonely'?(firstOf(e=>e.type==='need.crossed'&&e.data.need==='loneliness'&&e.data.to==='urgent')||firstOf(e=>e.type==='need.crossed'&&e.data.need==='loneliness')):firstOf(e=>e.type==='mood.shifted');
+    let items=[];
+    for(const k of keys){const zz=z[k];if(zz==null||Math.abs(zz)<zT)continue;const v=A.feats[k]||0;const t=k.startsWith('share_')?k.slice(6):null;
+      items.push({score:Math.abs(zz),badge:(zz>0?'+':'−')+Math.abs(zz).toFixed(1)+'σ',kind:'outlier',title:t?`${t} ${zz>0?'far more':'far less'} than usual`:`${FLONG[k]||k} ${zz>0?'unusually high':'unusually low'}`,detail:`${fFmt(k,v)}${t?' of slots':''} here vs ${fFmt(k,m[k])} mean across ${ref.length} runs.`,ev:featEvent(k)});}
+    if(ref.length>=2){const freq=sg=>ref.filter(x=>x.A.sigs.has(sg)).length;
+      for(const h of A.habits){const sg=h.mech+':'+h.tool;const k=freq(sg);if(k/ref.length<=.25&&!items.some(i=>i.sig===sg))items.push({sig:sg,score:1.6+(1-k/ref.length)*2,badge:`${k}/${ref.length}`,kind:'rare habit',title:`${h.tool} habit by ${h.mech}`,detail:`Formed in ${k} of ${ref.length} comparison runs. ${habitWhy(h,A)}`,ev:h.f.id});}
+      const allSigs=new Set(ref.flatMap(x=>[...x.A.sigs]));
+      for(const sg of allSigs){const k=freq(sg);if(k/ref.length>=.75&&!A.sigs.has(sg)){const[mech,tool]=sg.split(':');items.push({score:1.2+k/ref.length*1.5,badge:`${k}/${ref.length}`,kind:'missing',title:`No ${tool} habit by ${mech}`,detail:`${k} of ${ref.length} comparison runs form one; this seed never did.`,ev:firstOf(e=>e.type==='tool.used'&&e.data.tool===tool)});}}}
+    items.sort((a,b)=>b.score-a.score);
+    if(!this.state.sel&&items[0]&&items[0].ev)setTimeout(()=>{if(!this.state.sel)this.setState({sel:items[0].ev});},0);
+    const unexpected=items.map(i=>({...i,bg:selBg(i.ev),onClick:select(i.ev)}));
+
+    // chart
+    const S=A.S,N=Math.max(1,S.length),h1=280,h2=110;
+    const sw=1000/N,X=i=>(i+.5)*sw,P=i=>i/N*100,Y=v=>8+(1-v)*(h1-16);
+    const dayCount=Math.ceil(N/12);
+    const bands=[],bands2=[],dayLabels=[];for(let d=0;d<dayCount;d++){const x=d*12*sw,w=12*sw;if(d%2===1){bands.push({x,w});bands2.push({x,w});}dayLabels.push({x:P(d*12),label:`D${d+1} ${WD[d%7]}`});}
+    const grid=[{v:0,l:'0'},{v:.5,l:'.50',dash:'4 4'},{v:.8,l:'.80',dash:'4 4'},{v:1,l:'1'}].map(g=>({y:Y(g.v),top:Y(g.v)-5,label:g.l,dash:g.dash||'none',sw:g.dash?1.5:1}));
+    const SER={hunger:{color:'var(--color-neutral-600)',sw:2,dash:'5 3'},fatigue:{color:'var(--color-neutral-400)',sw:3,dash:'none'},boredom:{color:'var(--color-text)',sw:1.5,dash:'none'},loneliness:{color:'var(--color-accent)',sw:3,dash:'none'}};
+    const path=(f,yf)=>S.map((r,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+yf(f(r)).toFixed(1)).join(' ');
+    const paths=NEEDS.filter(k=>!this.state.hidden[k]).map(k=>({d:path(r=>r[k]||0,Y),...SER[k]}));
+    const Y2=v=>4+(1-(v+1)/2)*(h2-8);
+    const paths2=[{d:path(r=>r.mood||0,Y2),color:'var(--color-text)',sw:2,dash:'none'},{d:path(r=>(r.willpower||0)*2-1,Y2),color:'var(--color-accent)',sw:2,dash:'2 3'}];
+    const toolsSeen=[...new Set(all.flatMap(x=>Object.keys(x.A.toolCount)))];
+    const colorOf=t=>TOOL_COLOR[t]||EXTRA_COLORS[toolsSeen.indexOf(t)%EXTRA_COLORS.length];
+    const ribbon=S.map((r,i)=>{const c=A.slotTool[r.day*100+r.slot];const t=c&&c.data.tool;return{x:P(i),w:100/N,color:t?colorOf(t):'transparent'};});
+    const idxOf=e=>{const i=S.findIndex(r=>r.day===e.day&&r.slot===e.slot);return i<0?0:i;};
+    const stack={};const mkr=(pred,title)=>A.mine.filter(pred).map(e=>{const i=idxOf(e);stack[i]=(stack[i]||0)+1;return{x:P(i+.5),y:4+((stack[i]-1)%3)*11,title:`#${e.id} d${e.day} ${HH(e.slot)} — ${title(e)}`,onClick:select(e.id)};});
+    const mk={formed:mkr(e=>e.type==='habit.formed',describe),broken:mkr(e=>e.type==='habit.broken',describe),depleted:mkr(e=>e.type==='willpower.depleted',describe),unmet:mkr(e=>e.type==='urge.unmet',describe),rational:mkr(e=>e.type==='memory.formed'&&e.data.distortion==='rationalized',describe)};
+    const hv=this.state.hover;let hover={on:false};
+    if(hv!=null&&S[hv]){const r=S[hv],c=A.slotTool[r.day*100+r.slot];const x=P(hv+.5);hover={on:true,x,boxLeft:x>70?`calc(${x}% - 232px)`:`calc(${x}% + 12px)`,when:`D${r.day} ${WD[(r.day-1)%7]} · ${HH(r.slot)}`,tool:c?(c.data.tool||'idle')+' · '+c.data.rule:'—',rows:LEVELS.map(k=>({k,v:(r[k]??0).toFixed(2)}))};}
+    const slotFromEvt=ev=>{const b=ev.currentTarget.getBoundingClientRect();return clamp(Math.floor((ev.clientX-b.left)/b.width*N),0,N-1);};
+    let selV={hasSlot:false};if(sel){const i=idxOf(sel);selV={hasSlot:true,x:P(i),w:100/N};}
+
+    // habits
+    const habits=A.habits.map(h=>{const d=h.f.data,end=h.br?h.br.day:A.days;return{id:d.habit_id,tool:d.tool,at:HH(d.context.slot),mechanism:d.mechanism,mechBg:d.mechanism==='reinforcement'?'var(--color-neutral-200)':'var(--color-accent-100)',mechFg:d.mechanism==='reinforcement'?'var(--color-neutral-800)':'var(--color-accent-800)',barL:((h.f.day-1)/A.days*100).toFixed(1),barW:(Math.max(.5,(end-h.f.day+(h.br?0:1)))/A.days*100).toFixed(1),barEnd:(end/A.days*100).toFixed(1),barColor:h.br?'var(--color-neutral-500)':'var(--color-text)',isBroken:!!h.br,span:`formed d${h.f.day}${h.br?` · broke d${h.br.day}`:''}`,fate:h.br?`broken · ${String(h.br.data.reason).replace('_',' ')} · lived ${h.br.data.lived_days}d`:`alive · ${h.band}`,why:habitWhy(h,A),context:`context: after ${d.context.previous_tool||'nothing'} · mood ${d.context.mood_band}`,bg:selBg(h.f.id),onClick:select(h.f.id)};});
+
+    // memories
+    const mf=this.state.memFilter;
+    const memories=A.memories.filter(x=>mf==='all'||(mf==='rat'?x.m.data.distortion==='rationalized':x.m.data.salience>=.8)).map(x=>{const w=memoryWhy(x,A);const rat=x.m.data.distortion==='rationalized';return{id:x.m.data.memory_id,label:w.label,when:when(x.src),rat,plain:!rat,remembered:w.remembered,logged:w.logged,text:w.text,sal:Math.round(x.m.data.salience*100),salTxt:(+x.m.data.salience).toFixed(2),bg:selBg(x.m.id),onClick:select(x.m.id)};});
+    const ratCount=A.memories.filter(x=>x.m.data.distortion==='rationalized').length;
+    const segBg=on=>on?'var(--color-text)':'transparent';
+
+    // why
+    let why={on:false,off:true};
+    if(sel){
+      const seen=new Set([sel.id]),chain=[];let frontier=[[sel.id,0]];
+      while(frontier.length&&chain.length<16){const[id,dp]=frontier.shift();const e=A.byId.get(id);if(!e)continue;chain.push({id,when:when(e),text:describe(e),pad:4+Math.min(dp,6)*14,weight:dp===0?800:400,onClick:select(id)});if(dp<6)for(const c of e.causes||[])if(!seen.has(c)){seen.add(c);frontier.push([c,dp+1]);}}
+      const effects=(A.kids.get(sel.id)||[]).slice(0,6).map(id=>{const e=A.byId.get(id);return{id,when:when(e),text:describe(e),onClick:select(id)};});
+      let kicker=sel.type,title=describe(sel),text='';
+      const hb=A.habits.find(h=>h.f.id===sel.id);const mm=A.memories.find(x=>x.m.id===sel.id);
+      if(hb){kicker='habit · '+hb.mech;title=`${hb.tool} at ${HH(hb.f.data.context.slot)}`;text=habitWhy(hb,A);}
+      else if(mm){const w=memoryWhy(mm,A);kicker=`memory ${mm.m.data.memory_id} · salience ${(+mm.m.data.salience).toFixed(2)}`;title=w.label;text=w.rat?`${w.remembered} — but the log says: ${w.logged}`:w.text+` Salience ${(+mm.m.data.salience).toFixed(2)} cleared the 0.50 floor.`;}
+      else if(sel.type==='tool.chosen'){const d=sel.data;title=`${d.tool||'idle'} at ${HH(sel.slot)}, d${sel.day}`;text=`Chosen by the ${d.rule} rule${d.urge?` (${d.urge} at ${d.pressure})`:''}${d.need?` because ${d.need} was urgent`:''}${d.habit_id?` — habit ${d.habit_id} was due`:''}. The chain below is what led here.`;}
+      else text='The chain below is every event this one cites, walked back to its roots.';
+      why={on:true,off:false,kicker,title,text,chain,effects,hasEffects:effects.length>0};
+    }
+
+    const kpis=[
+      {label:'Novelty',value:novs.get(run.id).toFixed(1)+'σ',sub:`RMS z vs ${ref.length} runs`,color:'var(--color-accent)'},
+      {label:'Unexpected',value:String(items.length),sub:`beyond ${zT.toFixed(1)}σ or rare`,color:'var(--color-text)'},
+      {label:'Habits',value:String(A.habits.length),sub:`${A.feats.broken} broken · ${A.habits.length-A.feats.broken} alive`,color:'var(--color-text)'},
+      {label:'Memories',value:String(A.memories.length),sub:`${ratCount} rationalized`,color:'var(--color-text)'},
+      {label:'Overrides',value:`${A.feats.held}/${A.feats.lost}`,sub:'held / lost to the body',color:'var(--color-text)'},
+      {label:'Urges unmet',value:String(A.feats.unmet),sub:'nothing in catalog answers',color:'var(--color-text)'},
+      {label:'Peak loneliness',value:A.feats.peakLonely.toFixed(2),sub:`${A.feats.urgentLonely.toFixed(1)} days urgent`,color:A.feats.peakLonely>=.8?'var(--color-accent)':'var(--color-text)'},
+    ];
+
+    const matrix={cols:keys.map(fLabel),rows:all.map(x=>{const rr=all.filter(y=>y.r.id!==x.r.id);const{z:zz}=zOf(x.r,x.A,rr);const on=x.r.id===run.id;return{label:`${x.r.exp} · ${x.r.label||'seed '+x.r.seed}`,nov:novs.get(x.r.id).toFixed(1)+'σ',weight:on?800:400,outline:on?'2px solid var(--color-text)':'none',onClick:()=>this.setState({runId:x.r.id,sel:null}),cells:keys.map(k=>{const v=zz[k]||0;const a=Math.min(55,Math.abs(v)*18);return{v:fFmt(k,x.A.feats[k]||0),bg:Math.abs(v)<.5?'transparent':v>0?`color-mix(in srgb, var(--color-accent) ${a}%, transparent)`:`color-mix(in srgb, var(--color-neutral-700) ${a*.7}%, transparent)`};})};})};
+
+    const tog=k=>()=>this.setState(s=>({hidden:{...s.hidden,[k]:!s.hidden[k]}}));
+    const rm=this.state.refMode;
+    return{
+      sourceLabel:this.state.loaded.length?`${this.state.loaded.length} loaded + sample`:'Sample data · engine-shaped',fileRef:this.fileRef,onFiles:this.onFiles,
+      setRefAll:()=>this.setState({refMode:'all'}),setRefCfg:()=>this.setState({refMode:'cfg'}),refAllBg:segBg(rm==='all'),refAllFg:rm==='all'?'var(--color-bg)':'var(--color-text)',refCfgBg:segBg(rm==='cfg'),refCfgFg:rm==='cfg'?'var(--color-bg)':'var(--color-text)',
+      refHint:rm==='all'?'Novelty against every other run — shows what a test tool or dial change does.':'Novelty against seeds of the same config — isolates what the seed alone did.',
+      groups,
+      run:{expName:`${run.exp} · ${run.expName}`,expNote:run.expNote,title:`${run.label||'Seed '+run.seed} — ${run.who}`,meta:`${A.days} days · ${S.length} slots · ${A.E.length} events · resident ${run.residents[0]}`},
+      kpis,
+      tg:{hunger:tog('hunger'),fatigue:tog('fatigue'),boredom:tog('boredom'),loneliness:tog('loneliness')},
+      op:{hunger:this.state.hidden.hunger?.35:1,fatigue:this.state.hidden.fatigue?.35:1,boredom:this.state.hidden.boredom?.35:1,loneliness:this.state.hidden.loneliness?.35:1},
+      ch:{mid2:Y2(0),bands,bands2,grid,paths,paths2,dayLabels,ribbon},mk,showMood,
+      toolLegend:toolsSeen.map(t=>({label:t,color:colorOf(t)})),
+      onMove:ev=>{const i=slotFromEvt(ev);if(i!==this.state.hover)this.setState({hover:i});},onLeave:()=>this.setState({hover:null}),
+      onChartClick:ev=>{const i=slotFromEvt(ev);const r=S[i];const c=r&&A.slotTool[r.day*100+r.slot];if(c)this.setState({sel:c.id});},
+      hover,sel:selV,
+      unexpected,noUnexpected:items.length===0,unexpHint:`ranked by surprise · vs ${ref.length} runs`,
+      habits,noHabits:habits.length===0,habitHint:`lifetime across ${A.days} days`,
+      memories,memCount:A.memories.length,ratCount,
+      memAll:()=>this.setState({memFilter:'all'}),memRat:()=>this.setState({memFilter:'rat'}),memHigh:()=>this.setState({memFilter:'high'}),
+      memAllBg:segBg(mf==='all'),memAllFg:mf==='all'?'var(--color-bg)':'var(--color-text)',memRatBg:segBg(mf==='rat'),memRatFg:mf==='rat'?'var(--color-bg)':'var(--color-text)',memHighBg:segBg(mf==='high'),memHighFg:mf==='high'?'var(--color-bg)':'var(--color-text)',
+      why,matrix,
+    };
+  }
+}
+</script>
+</body>
+</html>
